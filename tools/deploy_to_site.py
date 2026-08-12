@@ -30,116 +30,189 @@ COPY = ["index.html", "css", "js", "lib", "data"]        # note: test/ is not sh
 PAGE = """---
 layout: page
 permalink: /diffraction/
-title: game of diffraction
+title: The Game of Diffraction
 nav: {nav}
 nav_order: 6
-description: An interactive six-circle diffractometer. Drive the motors and watch the Bragg spots land on the detector.
+description: Ever wondered how single-crystal diffraction works, and how we can predict where the Bragg peaks will emerge on the detector?
 _styles: >
-  .game-shell {{
+  .game-shell {
     width: 100vw;
     margin-left: calc(50% - 50vw);
     height: min(86vh, 940px);
     min-height: 520px;
     border: 0;
-  }}
-  .game-shell iframe {{ width: 100%; height: 100%; border: 0; display: block; }}
-  .game-note {{ font-size: 0.85rem; opacity: 0.75; margin-top: 0.6rem; }}
-  .game-launch {{
+  }
+  .game-shell iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .game-note { font-size: 0.85rem; opacity: 0.75; margin-top: 0.6rem; }
+  .game-launch {
     display: inline-block;
-    margin: 0.1rem 0 1.1rem;
+    margin: 0 0.5rem 0 0;
     padding: 0.55rem 1.15rem;
     border: 1px solid var(--global-theme-color);
     border-radius: 6px;
     color: var(--global-theme-color);
     font-weight: 600;
     text-decoration: none;
-  }}
-  .game-launch:hover {{
+    cursor: pointer;
+  }
+  .game-launch:hover {
     background: var(--global-theme-color);
     color: var(--global-bg-color);
     text-decoration: none;
-  }}
+  }
+  .game-buttons { margin: 0.1rem 0 1.1rem; }
+  .game-guide { display: inline-block; vertical-align: top; }
+  .game-guide[open] { display: block; }
+  .game-guide > summary { list-style: none; }
+  .game-guide > summary::-webkit-details-marker { display: none; }
+  .game-guide > summary::marker { content: ""; }
+  .game-guide-body {
+    margin: 0 0 1.6rem;
+    padding: 0.2rem 0 0.6rem;
+    border-top: 1px solid var(--global-divider-color);
+  }
+  .game-guide-body h3 { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; }
+  .game-guide-body li { margin-bottom: 0.35rem; }
+  .game-guide-body table { width: 100%; margin: 0.6rem 0 1rem; }
+  .game-guide-body td, .game-guide-body th { padding: 0.3rem 0.6rem; }
 ---
 
-<a class="game-launch" href="{{{{ '/assets/diffraction/index.html' | relative_url }}}}"
+<div class="game-buttons">
+<a class="game-launch" href="{{ '/assets/diffraction/index.html' | relative_url }}"
    target="_blank" rel="noopener">Open full screen &#8599;</a>
+<details class="game-guide">
+  <summary class="game-launch">How to use</summary>
+  <div class="game-guide-body">
 
-Mount a crystal on a six-circle diffractometer, drive the motors, and watch which
-reflections light up and where they land on the detector. Everything is computed
-in your browser as you drag.
+    <h3>The workspace</h3>
+    <ul>
+      <li><strong>Control panel (left).</strong> Beamline parameters, sample
+        structure and orientation, and the motor positions.</li>
+      <li><strong>Instrument view (centre).</strong> The diffractometer in three
+        dimensions, seen from upstream looking downstream along the beam. The
+        cyan rays are the diffracted beams that reach the panel, so each one
+        ends on its own Bragg spot.</li>
+      <li><strong>Detector view (right).</strong> The same detector face, seen
+        from the sample position.</li>
+    </ul>
 
-It opens on a pattern: the crystal starts axis-aligned, which is a zone axis, and
-the beam starts at 18.859 keV, where the wavelength is exactly a/9 for the default
-5.917 Å cell. Twelve reflections then sit exactly on the Ewald sphere. Nudge the
-energy and they go out, which is the Bragg condition made visible.
+    <h3>Seeing a reflection</h3>
+    <ul>
+      <li><strong>Rock the crystal.</strong> Drag <em>omega</em>. Reflections
+        light up and fade as lattice planes pass through the Bragg condition,
+        and the pattern goes dark between them because Bragg is a condition,
+        not a suggestion.</li>
+      <li><strong>Drive to a named reflection.</strong> Enter Miller indices,
+        say <code>2 1 1</code>, under <em>Drive to a reflection</em> and press
+        <strong>Find omega</strong>. You get every omega that satisfies the
+        Bragg condition with the other three circles held, which is what
+        rocking one motor does at a beamline. Choose a solution, press
+        <strong>Drive there</strong>, then <strong>Aim detector</strong> to
+        swing the arm onto the diffracted beam.</li>
+      <li><strong>Blind cones.</strong> If no omega reaches a reflection, a
+        limitation of rotating about a single axis rather than a bug, the page
+        says so and offers a chi that brings it within range.</li>
+      <li><strong>Why there is a pattern at the start.</strong> The crystal
+        opens axis-aligned, which is a zone axis, and the beam opens at
+        18.859 keV, where the wavelength is exactly a/9 for the default
+        5.917 &#197; cell. Twelve reflections then sit exactly on the Ewald
+        sphere. Detune the energy and they go out.</li>
+    </ul>
+
+    <h3>Goniometer and detector circles</h3>
+    <p>The simulator follows the six-circle convention of You (1999).</p>
+    <table>
+      <thead><tr><th>Circle</th><th>Moves</th><th>Rotation</th></tr></thead>
+      <tbody>
+        <tr><td>mu, omega, chi, phi</td><td>Sample</td>
+            <td>Nested goniometer rotations that orient the lattice in space</td></tr>
+        <tr><td>delta</td><td>Detector</td>
+            <td>Swings the arm through the vertical arc</td></tr>
+        <tr><td>gamma</td><td>Detector</td>
+            <td>Swings the arm through the horizontal arc</td></tr>
+      </tbody>
+    </table>
+    <p>Moving delta or gamma carries the panel with it in the instrument view
+      while the diffracted beams stay fixed in the laboratory frame, so the
+      spots slide across the detector face rather than travelling with it.</p>
+
+    <h3>Beam and detector</h3>
+    <ul>
+      <li><strong>Energy and wavelength</strong> are one quantity seen two
+        ways, so editing either updates the other.</li>
+      <li><strong>Distance and detector model</strong> set how much of
+        reciprocal space you collect. A shorter distance or a larger panel buys
+        angular range at the cost of spatial resolution.</li>
+      <li><strong>Preview bin</strong> trades detector pixels for frame rate.
+        Raise it while dragging a motor; set it to 1 for a full-resolution
+        frame once the setting is worth keeping.</li>
+    </ul>
+
+    <h3>Sample and mosaicity</h3>
+    <ul>
+      <li><strong>Structure.</strong> A bundled crystal structure gives real
+        |F(hkl)| from tabulated atomic form factors. A bare lattice allows
+        every reflection and dims the high-angle ones through a Debye-Waller
+        falloff alone.</li>
+      <li><strong>Peak width</strong> is the size of a Bragg peak in reciprocal
+        space. Widening it keeps reflections lit further from the exact
+        condition, which is what mosaic spread does to a real crystal.</li>
+    </ul>
+
+    <h3>Orientation and geometry</h3>
+    <ul>
+      <li><strong>Manual alignment.</strong> The rx, ry and rz sliders tilt the
+        crystal on its mount.</li>
+      <li><strong>Automated alignment.</strong> <em>Point a crystal direction</em>
+        puts a chosen direction along a laboratory axis: send (1 1 1) along the
+        beam, then bring a second direction toward the vertical to remove the
+        rotation that is still free about the first.</li>
+      <li><strong>Transmission and reflection.</strong> In reflection geometry
+        the sample carries a surface normal: reflections pointing into the bulk
+        are blocked and the angle of incidence is reported. Tick <em>Rays that
+        miss</em> to see which reflections never reach the panel, and why.</li>
+    </ul>
+
+    <h3>Reading the frame</h3>
+    <ul>
+      <li>Hover anywhere on the detector image for the pixel coordinates, the
+        scattering angle 2-theta, the scattering vector |Q| and the lattice
+        spacing d.</li>
+      <li>Log scale is on by default, since a diffraction pattern spans several
+        orders of magnitude in intensity.</li>
+    </ul>
+
+    <h3>What is modelled, and what is not</h3>
+    <p>Kinematic single scattering: each reflection carries |F(hkl)|&#178;
+      times its excitation and a polarization factor, spread as a Gaussian on
+      the panel. There is no absorption, extinction, multiple scattering,
+      anomalous dispersion, detector point-spread or noise. Peak positions are
+      exact geometry; relative intensities are a good guide rather than a
+      structure refinement.</p>
+
+  </div>
+</details>
+</div>
+
+Try the game, made using
+[xrays_on_detector](https://github.com/dubajicmilos/xrays-on-detector), an
+open-source package for six-circle diffraction. Every reflection, every spot
+position and every intensity on this page is computed in your browser as you
+drag; nothing is precomputed and there is no server doing the work.
+
+You are free to reorient the sample, drive the goniometer circles, change the
+detector model and its distance, and tune the X-ray energy, then watch the
+diffraction pattern each configuration produces for a range of crystals. You
+can also drive the detector arm onto a particular hkl reflection.
 
 <div class="game-shell">
-  <iframe src="{{{{ '/assets/diffraction/index.html' | relative_url }}}}"
-          title="Game of Diffraction"
+  <iframe src="{{ '/assets/diffraction/index.html' | relative_url }}"
+          title="The Game of Diffraction"
           loading="lazy"
           allow="fullscreen"></iframe>
 </div>
 
 <p class="game-note">Works best on a desktop browser.</p>
-
-## How to use it
-
-**The three panels.** Controls on the left, the instrument in the middle, the
-detector image on the right. The middle panel is the machine seen from upstream,
-looking downstream along the beam; the right panel is that same detector face,
-seen from the sample. The cyan rays are the diffracted beams that reach the
-panel, so each one ends on its own spot.
-
-**Try this first.** Drag **omega** and watch reflections sweep on and off the
-sphere. Every spot that lights up is a lattice plane that has just come into the
-Bragg condition, and the pattern goes dark between them because Bragg is a
-condition, not a suggestion.
-
-**Drive to a named reflection.** Type `2 1 1` under _Drive to a reflection_ and
-press **Find omega**. You get every omega that puts that reflection on the sphere
-with the other three circles held, which is what rocking one motor does at a
-beamline. Pick a solution, press **Drive there**, then **Aim detector** to swing
-the arm onto it. If a reflection cannot be reached by omega alone it says so, and
-offers a chi that brings it into reach: that is the blind cone of a single-axis
-rotation, and moving an outer circle is the real fix.
-
-**The circles.** `mu`, `omega`, `chi`, `phi` move the crystal; `delta` and
-`gamma` move the detector arm. In the You (1999) convention used here `delta`
-swings the arm vertically and `gamma` horizontally, so watch the panel move in
-the 3D view while the spots stay put in space and slide across the panel.
-
-**Beam and detector.** Energy and wavelength are two views of one number, so
-either box drives the other. Distance and detector model change how much of
-reciprocal space you catch: a shorter distance or a larger panel buys angular
-range at the cost of resolution. _Preview bin_ trades detector pixels for frame
-rate; set it to 1 for a full-resolution frame once you like a setting.
-
-**Sample.** Pick a bundled structure for real |F(hkl)| from tabulated form
-factors, or a bare lattice, where every reflection is allowed and only a
-Debye-Waller falloff dims the high-angle ones. _Peak width_ is the reciprocal
-space size of a Bragg peak: widen it and reflections stay lit further from the
-exact condition, which is what mosaic spread does to a real crystal.
-
-**Orientation.** The rx/ry/rz sliders tilt the crystal on its mount. _Point a
-crystal direction somewhere_ does the alignment for you: put `1 1 1` along the
-beam, then a second direction toward the vertical, and you have set the crystal
-the way you would on the floor.
-
-**Reflection geometry.** Switch from _Transmission_ to _Reflection_ and the
-sample becomes a surface with a normal. Reflections pointing into the sample are
-blocked, and the incidence angle is reported; tick _show blocked/missed rays_ to
-see which reflections were lost and why.
-
-**Reading the frame.** Hover the detector image for pixel, 2θ, |Q| and d. Log
-scale is on by default, since a diffraction pattern spans orders of magnitude.
-
-### What is modelled, and what is not
-
-Kinematic single scattering: each reflection carries |F(hkl)|² times its
-excitation and a polarization factor, spread as a Gaussian on the panel. No
-absorption, no extinction, no multiple scattering, no anomalous dispersion, no
-detector point-spread or noise. Peak positions are exact geometry; relative
-intensities are a good guide rather than a structure refinement.
 """
 
 
@@ -205,7 +278,7 @@ def main():
         changed.append(".prettierignore")
 
     page_path = os.path.join(site, "_pages", "diffraction.md")
-    text = PAGE.format(nav="true" if args.nav else "false")
+    text = PAGE.replace("{nav}", "true" if args.nav else "false")
     old = open(page_path, encoding="utf-8").read() if os.path.exists(page_path) else None
     if old != text:
         with open(page_path, "w", encoding="utf-8", newline="\n") as fh:
