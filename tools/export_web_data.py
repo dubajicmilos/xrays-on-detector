@@ -124,6 +124,22 @@ def _site_displacements(cif_path):
     return out
 
 
+def _space_group(cif_path):
+    """The CIF's Hermann-Mauguin symbol, or None if it does not assert one.
+
+    A file that says P 1 is not claiming triclinic symmetry, it is a structure
+    someone already expanded (or transformed to a setting where the parent
+    symbol no longer applies), so there is nothing meaningful to display.
+    """
+    text = open(cif_path, encoding="utf-8", errors="replace").read()
+    m = re.search(r"_(?:space_group_name_H-M_alt|symmetry_space_group_name_H-M)"
+                  r"\s+(['\"]?)(.+?)\1\s*\n", text)
+    if not m:
+        return None
+    symbol = re.sub(r"\s+", "", m.group(2).strip())
+    return None if symbol in ("P1", "") else symbol
+
+
 def export_structure(cif_path, name, out_dir):
     """Expand a CIF to P1 with ASE and write cell + atoms as compact JSON."""
     from ase.io import read
@@ -153,6 +169,7 @@ def export_structure(cif_path, name, out_dir):
     doc = {
         "name": name,
         "source": os.path.basename(cif_path),
+        "spaceGroup": _space_group(cif_path),
         "cell": {"a": float(cell[0]), "b": float(cell[1]), "c": float(cell[2]),
                  "alpha": float(cell[3]), "beta": float(cell[4]),
                  "gamma": float(cell[5])},
