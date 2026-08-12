@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Diffraction Game</title>
+    <meta
+      name="description"
+      content="Interactive six-circle single-crystal diffraction simulator: drive the motors, watch the Bragg spots land on the detector."
+    />
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="panel">
+        <header class="brand">
+          <h1>Diffraction Game</h1>
+          <p>A six-circle diffractometer in your browser.</p>
+        </header>
+
+        <section class="grp">
+          <h2>Beam and detector</h2>
+          <div class="row">
+            <label>Wavelength</label
+            ><input type="number" id="wl" step="0.01" min="0.05" max="6" /><span
+              class="u"
+              >Å</span
+            >
+          </div>
+          <div class="row">
+            <label>Energy</label
+            ><input
+              type="number"
+              id="energy"
+              step="0.1"
+              min="2"
+              max="250"
+            /><span class="u">keV</span>
+          </div>
+          <div class="row">
+            <label>Detector</label
+            ><select id="detPreset"></select>
+          </div>
+          <div class="row">
+            <label>Pixel size</label
+            ><input type="number" id="pixel" step="0.001" min="0.005" /><span
+              class="u"
+              >mm</span
+            >
+          </div>
+          <div class="row">
+            <label>Pixels h×v</label
+            ><input type="number" id="nFast" step="1" min="16" /><input
+              type="number"
+              id="nSlow"
+              step="1"
+              min="16"
+            />
+          </div>
+          <div class="row">
+            <label>Distance</label
+            ><input type="number" id="distance" step="1" min="20" /><span
+              class="u"
+              >mm</span
+            >
+          </div>
+          <div class="row">
+            <label>Preview bin</label
+            ><input type="number" id="bin" step="1" min="1" max="16" />
+          </div>
+        </section>
+
+        <section class="grp">
+          <h2>Scattering geometry</h2>
+          <label class="radio"
+            ><input type="radio" name="mode" value="transmission" checked />
+            Transmission <em>(single-crystal rotation)</em></label
+          >
+          <label class="radio"
+            ><input type="radio" name="mode" value="reflection" /> Reflection
+            <em>(surface / CDI, one peak)</em></label
+          >
+          <div id="surfaceBox" class="sub hidden">
+            <div class="row">
+              <label>Surface (hkl)</label>
+              <input type="number" id="sh" step="1" value="0" class="idx" />
+              <input type="number" id="sk" step="1" value="0" class="idx" />
+              <input type="number" id="sl" step="1" value="1" class="idx" />
+            </div>
+            <button id="mountFlat" class="wide">
+              Mount surface normal vertical
+            </button>
+            <div class="readout">Incidence α <b id="alpha">–</b></div>
+          </div>
+        </section>
+
+        <section class="grp">
+          <h2>Sample</h2>
+          <div class="row">
+            <label>Structure</label
+            ><select id="structure"></select>
+          </div>
+          <div class="row">
+            <label>Peak width</label
+            ><input
+              type="number"
+              id="sigma"
+              step="0.002"
+              min="0.0005"
+              max="0.5"
+            /><span class="u">Å⁻¹</span>
+          </div>
+          <div class="readout" id="cellInfo">–</div>
+        </section>
+
+        <section class="grp">
+          <h2>Crystal orientation</h2>
+          <p class="hint">Free rotation about the lab axes</p>
+          <div id="rotRows"></div>
+          <p class="hint">Point a crystal direction somewhere</p>
+
+          <div class="alignblock">
+            <div class="alignline">
+              <span class="tag">point</span>
+              <input
+                type="number"
+                id="a1h"
+                value="1"
+                class="idx"
+                aria-label="h"
+              />
+              <input
+                type="number"
+                id="a1k"
+                value="1"
+                class="idx"
+                aria-label="k"
+              />
+              <input
+                type="number"
+                id="a1l"
+                value="0"
+                class="idx"
+                aria-label="l"
+              />
+              <select id="a1kind" class="kind">
+                <option value="hkl">(hkl) plane normal</option>
+                <option value="uvw">[uvw] direction</option>
+              </select>
+            </div>
+            <div class="alignline">
+              <span class="tag">along</span>
+              <select id="a1t" class="grow"></select>
+              <button id="a1go" class="go">Go</button>
+            </div>
+          </div>
+
+          <div class="alignblock">
+            <div class="alignline">
+              <span class="tag">then</span>
+              <input
+                type="number"
+                id="a2h"
+                value="0"
+                class="idx"
+                aria-label="h"
+              />
+              <input
+                type="number"
+                id="a2k"
+                value="0"
+                class="idx"
+                aria-label="k"
+              />
+              <input
+                type="number"
+                id="a2l"
+                value="1"
+                class="idx"
+                aria-label="l"
+              />
+              <select id="a2kind" class="kind">
+                <option value="hkl">(hkl) plane normal</option>
+                <option value="uvw">[uvw] direction</option>
+              </select>
+            </div>
+            <div class="alignline">
+              <span class="tag">toward</span>
+              <select id="a2t" class="grow"></select>
+              <button id="a2go" class="go">Go</button>
+            </div>
+          </div>
+          <div class="readout" id="alignMsg"></div>
+          <button id="resetU" class="wide">Reset orientation (U = I)</button>
+          <div class="row">
+            <label>UB</label
+            ><select id="ubConv" class="grow">
+              <option value="2pi">2π |a*| = 2π/a</option>
+              <option value="1/d">1/d |a*| = 1/a</option>
+              <option value="lambda">λ-scaled (CrysAlis)</option></select
+            ><button id="ubCopy">Copy</button>
+          </div>
+          <pre id="ub" class="matrix"></pre>
+        </section>
+
+        <section class="grp">
+          <h2>Motors</h2>
+          <div id="motorRows"></div>
+          <div class="row">
+            <label>Speed</label>
+            <input type="number" id="speed" step="0.1" value="0.5" />
+            <span class="u">°/frame</span>
+          </div>
+          <div class="alignline">
+            <button id="stopAll" class="grow">Stop all</button>
+            <button id="zeroAll" class="grow">Zero all</button>
+          </div>
+        </section>
+
+        <section class="grp">
+          <h2>Drive to a reflection</h2>
+          <div class="align">
+            <input type="number" id="dh" value="1" class="idx" /><input
+              type="number"
+              id="dk"
+              value="1"
+              class="idx"
+            /><input type="number" id="dl" value="1" class="idx" />
+            <button id="findOmega" class="grow">Find omega</button>
+          </div>
+          <select id="solutions" class="wide"></select>
+          <div class="readout" id="reachMsg"></div>
+          <div class="align">
+            <button id="driveThere" class="grow">Drive there</button>
+            <button id="aimDet" class="grow">Aim detector</button>
+          </div>
+          <button id="moveChi" class="wide" disabled>
+            Move chi into reach
+          </button>
+        </section>
+
+        <section class="grp">
+          <h2>Display</h2>
+          <div class="checks">
+            <label
+              ><input type="checkbox" id="showRings" checked /> Circles</label
+            >
+            <label><input type="checkbox" id="showRays" checked /> Rays</label>
+            <label
+              ><input type="checkbox" id="showFloor" checked /> Floor</label
+            >
+            <label
+              ><input type="checkbox" id="showAxes" checked /> Crystal a b
+              c</label
+            >
+            <label
+              ><input type="checkbox" id="showMissed" /> Rays that miss</label
+            >
+            <label
+              ><input type="checkbox" id="showLabels" checked /> hkl
+              labels</label
+            >
+            <label
+              ><input type="checkbox" id="logScale" checked /> Log scale</label
+            >
+          </div>
+          <div class="row">
+            <label>Colour map</label
+            ><select id="cmap" class="grow"></select>
+          </div>
+        </section>
+
+        <footer class="tiny">
+          You (1999) six-circle convention, kinematic diffraction, Cromer-Mann
+          form factors.
+        </footer>
+      </aside>
+
+      <main id="stage">
+        <canvas id="view3d"></canvas>
+        <div id="legend"></div>
+        <div id="hint3d">
+          drag orbit · right-drag or shift-drag pan · wheel zoom
+        </div>
+        <button id="panelToggle" aria-label="Toggle controls">☰</button>
+      </main>
+
+      <section id="detPane">
+        <div id="detViewport">
+          <canvas id="detCanvas"></canvas>
+          <div id="detOverlay"></div>
+        </div>
+        <div id="detZoom">
+          <button id="detZoomOut" title="zoom out">−</button>
+          <span id="detZoomLabel">100%</span>
+          <button id="detZoomIn" title="zoom in">+</button>
+          <button id="detZoomReset" title="fit to pane">fit</button>
+        </div>
+        <div id="detInfo">–</div>
+      </section>
+    </div>
+    <div id="boot">loading…</div>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
