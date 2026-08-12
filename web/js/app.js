@@ -69,6 +69,7 @@ const st = {
   F2: null,
   cmap: "inferno",
   log: true,
+  gain: 1, // display contrast; see the note on the slider below
   show: {
     rings: true,
     rays: true,
@@ -115,10 +116,23 @@ function rebuildReflections() {
   return qmax;
 }
 
+// A CIF that says P 1 asserts nothing, so those structures show no symbol at
+// all, and a name that already carries the symbol does not repeat it.
+function structureLabel(s) {
+  const flat = (t) => t.toLowerCase().replace(/[\s_]/g, "");
+  const show = s.spaceGroup && !flat(s.name).includes(flat(s.spaceGroup));
+  return (
+    `${s.name.replace(/_/g, " ")}` +
+    (show ? `  ${s.spaceGroup}` : "") +
+    `  (${s.atoms.length} atoms)`
+  );
+}
+
 function applyStructure(s) {
   const c = s.cell;
   st.cell = [c.a, c.b, c.c, c.alpha, c.beta, c.gamma];
   st.atoms = s.atoms;
+  st.spaceGroup = s.spaceGroup || null;
   needRebuild = true;
 }
 
@@ -196,7 +210,10 @@ function simulate() {
     minSigmaPx: 1.0,
   });
 
-  paint(detCanvas, image, det.nFast, det.nSlow, luts[st.cmap], { log: st.log });
+  paint(detCanvas, image, det.nFast, det.nSlow, luts[st.cmap], {
+    log: st.log,
+    gain: st.gain,
+  });
   fitDetectorCanvas(det);
   scene.touchDetectorImage();
   st.lastDet = det;
@@ -530,7 +547,7 @@ function bindInputs() {
   for (const s of structures) {
     const o = document.createElement("option");
     o.value = s.name;
-    o.textContent = `${s.name.replace(/_/g, " ")}  (${s.atoms.length} atoms)`;
+    o.textContent = structureLabel(s);
     sel.appendChild(o);
   }
   sel.addEventListener("change", () => {
@@ -713,6 +730,28 @@ function bindInputs() {
     st.log = $("logScale").checked;
     requestSim();
   });
+
+  // Contrast is a display gain, not a change to the physics: the frame is
+  // normalised to its brightest spot, so a reflection 1e-5 of the peak sits
+  // below one colour step until you stretch the map. The slider is decades,
+  // because that is the range the weak reflections actually span.
+  const gainEl = $("gain");
+  const showGain = () => {
+    const g = st.gain;
+    const round = (v) => (v < 10 ? +v.toFixed(1) : Math.round(v));
+    $("gainInfo").textContent =
+      g >= 1e6
+        ? `x${round(g / 1e6)}M`
+        : g >= 1e3
+          ? `x${round(g / 1e3)}k`
+          : `x${round(g)}`;
+  };
+  gainEl.addEventListener("input", () => {
+    st.gain = Math.pow(10, parseFloat(gainEl.value) || 0);
+    showGain();
+    requestSim();
+  });
+  showGain();
 
   const cm = $("cmap");
   for (const name of Object.keys(luts)) {
