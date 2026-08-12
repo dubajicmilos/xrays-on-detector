@@ -136,7 +136,8 @@ __BUTTON_CSS__---
 
 ## Goniometer and detector circles
 
-The simulator follows the six-circle convention of You (1999).
+The simulator follows the six-circle convention of
+[H. You (1999)](https://doi.org/10.1107/S0021889899001223).
 
 | Circle | Moves | Rotation |
 |---|---|---|
