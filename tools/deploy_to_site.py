@@ -182,9 +182,26 @@ PAGE = PAGE.replace("__BUTTON_CSS__", BUTTON_CSS)
 GUIDE = GUIDE.replace("__BUTTON_CSS__", BUTTON_CSS)
 
 
+def _fix_case(dst):
+    """Make the on-disk spelling of `dst` match exactly.
+
+    Windows keeps the existing name when a file is overwritten with a
+    different case, so renaming data/cspbbr3.json to data/CsPbBr3.json looks
+    fine locally and then 404s on the case-sensitive server the site runs on.
+    """
+    folder, name = os.path.split(dst)
+    if not os.path.isdir(folder):
+        return
+    for existing in os.listdir(folder):
+        if existing != name and existing.lower() == name.lower():
+            os.replace(os.path.join(folder, existing), dst)
+            print(f"  case fixed: {existing} -> {name}")
+
+
 def sync_tree(src, dst, report):
     """Copy src -> dst, reporting what actually changed."""
     if os.path.isfile(src):
+        _fix_case(dst)
         changed = not (os.path.exists(dst) and filecmp.cmp(src, dst, shallow=False))
         if changed:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
