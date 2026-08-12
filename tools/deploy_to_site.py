@@ -2,7 +2,8 @@
 
     python tools/deploy_to_site.py <path-to-site-repo> [--nav] [--page-only]
 
-Copies web/ into <site>/assets/diffraction/ and writes <site>/_pages/diffraction.md.
+Copies web/ into <site>/assets/diffraction/ and writes the two Markdown pages:
+<site>/_pages/diffraction.md (the game) and diffraction-guide.md (how to use).
 Run it again after any tweak; it is idempotent.
 
   --nav        set nav: true so the tab appears in the site menu
@@ -27,6 +28,25 @@ COPY = ["index.html", "css", "js", "lib", "data"]        # note: test/ is not sh
 # _config.yml exclude list both carry a bare "vendor" entry, which matches at
 # any depth, so a vendor/ folder here would be neither committed nor built.
 
+BUTTON_CSS = """  .game-launch {
+    display: inline-block;
+    margin: 0 0.5rem 0 0;
+    padding: 0.55rem 1.15rem;
+    border: 1px solid var(--global-theme-color);
+    border-radius: 6px;
+    color: var(--global-theme-color);
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .game-launch:hover {
+    background: var(--global-theme-color);
+    color: var(--global-bg-color);
+    text-decoration: none;
+  }
+  .game-buttons { margin: 0.1rem 0 1.1rem; }
+"""
+
 PAGE = """---
 layout: page
 permalink: /diffraction/
@@ -44,161 +64,17 @@ _styles: >
   }
   .game-shell iframe { width: 100%; height: 100%; border: 0; display: block; }
   .game-note { font-size: 0.85rem; opacity: 0.75; margin-top: 0.6rem; }
-  .game-launch {
-    display: inline-block;
-    margin: 0 0.5rem 0 0;
-    padding: 0.55rem 1.15rem;
-    border: 1px solid var(--global-theme-color);
-    border-radius: 6px;
-    color: var(--global-theme-color);
-    font-weight: 600;
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .game-launch:hover {
-    background: var(--global-theme-color);
-    color: var(--global-bg-color);
-    text-decoration: none;
-  }
-  .game-buttons { margin: 0.1rem 0 1.1rem; }
-  .game-guide { display: inline-block; vertical-align: top; }
-  .game-guide[open] { display: block; }
-  .game-guide > summary { list-style: none; }
-  .game-guide > summary::-webkit-details-marker { display: none; }
-  .game-guide > summary::marker { content: ""; }
-  .game-guide-body {
-    margin: 0 0 1.6rem;
-    padding: 0.2rem 0 0.6rem;
-    border-top: 1px solid var(--global-divider-color);
-  }
-  .game-guide-body h3 { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; }
-  .game-guide-body li { margin-bottom: 0.35rem; }
-  .game-guide-body table { width: 100%; margin: 0.6rem 0 1rem; }
-  .game-guide-body td, .game-guide-body th { padding: 0.3rem 0.6rem; }
----
+__BUTTON_CSS__---
 
 <div class="game-buttons">
 <a class="game-launch" href="{{ '/assets/diffraction/index.html' | relative_url }}"
    target="_blank" rel="noopener">Open full screen &#8599;</a>
-<details class="game-guide">
-  <summary class="game-launch">How to use</summary>
-  <div class="game-guide-body">
-
-    <h3>The workspace</h3>
-    <ul>
-      <li><strong>Control panel (left).</strong> Beamline parameters, sample
-        structure and orientation, and the motor positions.</li>
-      <li><strong>Instrument view (centre).</strong> The diffractometer in three
-        dimensions, seen from upstream looking downstream along the beam. The
-        cyan rays are the diffracted beams that reach the panel, so each one
-        ends on its own Bragg spot.</li>
-      <li><strong>Detector view (right).</strong> The same detector face, seen
-        from the sample position.</li>
-    </ul>
-
-    <h3>Seeing a reflection</h3>
-    <ul>
-      <li><strong>Rock the crystal.</strong> Drag <em>omega</em>. Reflections
-        light up and fade as lattice planes pass through the Bragg condition,
-        and the pattern goes dark between them because Bragg is a condition,
-        not a suggestion.</li>
-      <li><strong>Drive to a named reflection.</strong> Enter Miller indices,
-        say <code>2 1 1</code>, under <em>Drive to a reflection</em> and press
-        <strong>Find omega</strong>. You get every omega that satisfies the
-        Bragg condition with the other three circles held, which is what
-        rocking one motor does at a beamline. Choose a solution, press
-        <strong>Drive there</strong>, then <strong>Aim detector</strong> to
-        swing the arm onto the diffracted beam.</li>
-      <li><strong>Blind cones.</strong> If no omega reaches a reflection, a
-        limitation of rotating about a single axis rather than a bug, the page
-        says so and offers a chi that brings it within range.</li>
-      <li><strong>Why there is a pattern at the start.</strong> The crystal
-        opens axis-aligned, which is a zone axis, and the beam opens at
-        18.859 keV, where the wavelength is exactly a/9 for the default
-        5.917 &#197; cell. Twelve reflections then sit exactly on the Ewald
-        sphere. Detune the energy and they go out.</li>
-    </ul>
-
-    <h3>Goniometer and detector circles</h3>
-    <p>The simulator follows the six-circle convention of You (1999).</p>
-    <table>
-      <thead><tr><th>Circle</th><th>Moves</th><th>Rotation</th></tr></thead>
-      <tbody>
-        <tr><td>mu, omega, chi, phi</td><td>Sample</td>
-            <td>Nested goniometer rotations that orient the lattice in space</td></tr>
-        <tr><td>delta</td><td>Detector</td>
-            <td>Swings the arm through the vertical arc</td></tr>
-        <tr><td>gamma</td><td>Detector</td>
-            <td>Swings the arm through the horizontal arc</td></tr>
-      </tbody>
-    </table>
-    <p>Moving delta or gamma carries the panel with it in the instrument view
-      while the diffracted beams stay fixed in the laboratory frame, so the
-      spots slide across the detector face rather than travelling with it.</p>
-
-    <h3>Beam and detector</h3>
-    <ul>
-      <li><strong>Energy and wavelength</strong> are one quantity seen two
-        ways, so editing either updates the other.</li>
-      <li><strong>Distance and detector model</strong> set how much of
-        reciprocal space you collect. A shorter distance or a larger panel buys
-        angular range at the cost of spatial resolution.</li>
-      <li><strong>Preview bin</strong> trades detector pixels for frame rate.
-        Raise it while dragging a motor; set it to 1 for a full-resolution
-        frame once the setting is worth keeping.</li>
-    </ul>
-
-    <h3>Sample and mosaicity</h3>
-    <ul>
-      <li><strong>Structure.</strong> A bundled crystal structure gives real
-        |F(hkl)| from tabulated atomic form factors. A bare lattice allows
-        every reflection and dims the high-angle ones through a Debye-Waller
-        falloff alone.</li>
-      <li><strong>Peak width</strong> is the size of a Bragg peak in reciprocal
-        space. Widening it keeps reflections lit further from the exact
-        condition, which is what mosaic spread does to a real crystal.</li>
-    </ul>
-
-    <h3>Orientation and geometry</h3>
-    <ul>
-      <li><strong>Manual alignment.</strong> The rx, ry and rz sliders tilt the
-        crystal on its mount.</li>
-      <li><strong>Automated alignment.</strong> <em>Point a crystal direction</em>
-        puts a chosen direction along a laboratory axis: send (1 1 1) along the
-        beam, then bring a second direction toward the vertical to remove the
-        rotation that is still free about the first.</li>
-      <li><strong>Transmission and reflection.</strong> In reflection geometry
-        the sample carries a surface normal: reflections pointing into the bulk
-        are blocked and the angle of incidence is reported. Tick <em>Rays that
-        miss</em> to see which reflections never reach the panel, and why.</li>
-    </ul>
-
-    <h3>Reading the frame</h3>
-    <ul>
-      <li>Hover anywhere on the detector image for the pixel coordinates, the
-        scattering angle 2-theta, the scattering vector |Q| and the lattice
-        spacing d.</li>
-      <li>Log scale is on by default, since a diffraction pattern spans several
-        orders of magnitude in intensity.</li>
-    </ul>
-
-    <h3>What is modelled, and what is not</h3>
-    <p>Kinematic single scattering: each reflection carries |F(hkl)|&#178;
-      times its excitation and a polarization factor, spread as a Gaussian on
-      the panel. There is no absorption, extinction, multiple scattering,
-      anomalous dispersion, detector point-spread or noise. Peak positions are
-      exact geometry; relative intensities are a good guide rather than a
-      structure refinement.</p>
-
-  </div>
-</details>
+<a class="game-launch" href="{{ '/diffraction/guide/' | relative_url }}">How to use</a>
 </div>
 
 Try the game, made using
 [xrays_on_detector](https://github.com/dubajicmilos/xrays-on-detector), an
-open-source package for six-circle diffraction. Every reflection, every spot
-position and every intensity on this page is computed in your browser as you
-drag; nothing is precomputed and there is no server doing the work.
+open-source package for six-circle diffraction.
 
 You are free to reorient the sample, drive the goniometer circles, change the
 detector model and its distance, and tune the X-ray energy, then watch the
@@ -214,6 +90,95 @@ can also drive the detector arm onto a particular hkl reflection.
 
 <p class="game-note">Works best on a desktop browser.</p>
 """
+
+GUIDE = """---
+layout: page
+permalink: /diffraction/guide/
+title: How to use
+nav: false
+description: A guide to The Game of Diffraction, its panels, circles and controls.
+_styles: >
+__BUTTON_CSS__---
+
+<div class="game-buttons">
+<a class="game-launch" href="{{ '/diffraction/' | relative_url }}">&#8592; Back to the game</a>
+<a class="game-launch" href="{{ '/assets/diffraction/index.html' | relative_url }}"
+   target="_blank" rel="noopener">Open full screen &#8599;</a>
+</div>
+
+## The workspace
+
+- **Control panel (left).** Beamline parameters, sample structure and
+  orientation, and the motor positions.
+- **Instrument view (centre).** The diffractometer in three dimensions, seen
+  from upstream looking downstream along the beam. The cyan rays are the
+  diffracted beams that reach the panel, so each one ends on its own Bragg
+  spot.
+- **Detector view (right).** The same detector face, seen from the sample
+  position.
+
+## Seeing a reflection
+
+- **Rock the crystal.** Drag *omega*. Reflections light up and fade as lattice
+  planes pass through the Bragg condition.
+- **Drive to a named reflection.** Enter Miller indices, say `2 1 1`, under
+  *Drive to a reflection* and press **Find omega**. You get every omega that
+  satisfies the Bragg condition with the other three circles held, which is
+  what rocking one motor does at a beamline. Choose a solution, press **Drive
+  there**, then **Aim detector** to swing the arm onto the diffracted beam.
+- **Blind cones.** If no omega reaches a reflection, a limitation of rotating
+  about a single axis rather than a bug, the page says so and offers a chi that
+  brings it within range.
+- **Why there is a pattern at the start.** The crystal opens axis-aligned,
+  which is a zone axis, and the beam opens at 18.859 keV, where the wavelength
+  is exactly a/9 for the default 5.917 Å cell. Twelve reflections then sit
+  exactly on the Ewald sphere. Detune the energy and they go out.
+
+## Goniometer and detector circles
+
+The simulator follows the six-circle convention of You (1999).
+
+| Circle | Moves | Rotation |
+|---|---|---|
+| mu, omega, chi, phi | Sample | Nested goniometer rotations that orient the lattice in space |
+| delta | Detector | Swings the arm through the vertical arc |
+| gamma | Detector | Swings the arm through the horizontal arc |
+
+## Beam and detector
+
+- Set the energy or wavelength.
+- **Distance and detector model** set how much of reciprocal space you collect.
+  A shorter distance or a larger panel buys angular range at the cost of
+  spatial resolution.
+- **Preview bin** trades detector pixels for frame rate. Raise it while
+  dragging a motor; set it to 1 for a full-resolution frame once the setting is
+  worth keeping.
+
+## Sample and mosaicity
+
+- **Structure.** Here you can select a crystallographic structure. Structure
+  factors are available for the crystal lattices offered.
+- **Peak width** is the size of a Bragg peak in reciprocal space. Widening it
+  keeps reflections lit further from the exact condition, which is what mosaic
+  spread does to a real crystal.
+
+## Orientation and geometry of the crystal
+
+- **Manual alignment.** The rx, ry and rz sliders tilt the crystal on its
+  mount.
+- **Automated alignment.** *Point a crystal direction* puts a chosen direction
+  along a laboratory axis: send (1 1 1) along the beam, then bring a second
+  direction toward the vertical to remove the rotation that is still free about
+  the first.
+- **Transmission and reflection.** In reflection geometry the sample carries a
+  surface normal: reflections pointing into the bulk are blocked and the angle
+  of incidence is reported. Tick *Rays that miss* to see which reflections
+  never reach the panel, and why.
+"""
+
+
+PAGE = PAGE.replace("__BUTTON_CSS__", BUTTON_CSS)
+GUIDE = GUIDE.replace("__BUTTON_CSS__", BUTTON_CSS)
 
 
 def sync_tree(src, dst, report):
@@ -277,13 +242,18 @@ def main():
                 fh.write(entry + "\n")
         changed.append(".prettierignore")
 
-    page_path = os.path.join(site, "_pages", "diffraction.md")
-    text = PAGE.replace("{nav}", "true" if args.nav else "false")
-    old = open(page_path, encoding="utf-8").read() if os.path.exists(page_path) else None
-    if old != text:
-        with open(page_path, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text)
-        changed.append(os.path.relpath(page_path))
+    # The guide is its own page rather than a panel on the game page, so
+    # opening it does not push the app down the screen.
+    pages = [("diffraction.md", PAGE.replace("{nav}", "true" if args.nav else "false")),
+             ("diffraction-guide.md", GUIDE)]
+    for name, text in pages:
+        page_path = os.path.join(site, "_pages", name)
+        old = (open(page_path, encoding="utf-8").read()
+               if os.path.exists(page_path) else None)
+        if old != text:
+            with open(page_path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+            changed.append(os.path.relpath(page_path))
 
     total = 0
     for root, _, files in os.walk(os.path.join(site, SUBDIR)):
@@ -291,7 +261,8 @@ def main():
 
     print(f"site:        {site}")
     print(f"app files:   {os.path.join(SUBDIR)}  ({total / 1024:.0f} kB on disk)")
-    print(f"page:        _pages/diffraction.md  (nav: {'true' if args.nav else 'false'})")
+    print(f"pages:       _pages/diffraction.md  (nav: {'true' if args.nav else 'false'})")
+    print(f"             _pages/diffraction-guide.md  -> /diffraction/guide/")
     if changed:
         print(f"changed {len(changed)} file(s):")
         for c in changed[:20]:
