@@ -15,8 +15,10 @@ Run from the project root:  python tools/export_web_data.py
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
+import re
 import sys
 
 import numpy as np
@@ -80,6 +82,48 @@ def export_scattering_factors(out_dir):
 # ---------------------------------------------------------------------------
 
 
+def _site_displacements(cif_path):
+    """Per-site B from the CIF, in the order the atom_site loop lists them.
+
+    ASE expands the symmetry and keeps occupancies, but drops the displacement
+    parameters, and a structure factor without them is wrong at high angle. So
+    read them here and map them back through ``spacegroup_kinds``. A site given
+    as U gets B = 8 pi^2 U; a site giving neither gets 0.
+    """
+    text = open(cif_path, encoding="utf-8", errors="replace").read()
+    out = []
+    for block in re.finditer(r"loop_\s*((?:\s*_atom_site_\S+\s*\n)+)(.*?)(?=\n\s*(?:loop_|_|$))",
+                             text, re.S):
+        headers = re.findall(r"_atom_site_(\S+)", block.group(1))
+        if "fract_x" not in headers:
+            continue
+        b_col = next((headers.index(h) for h in headers if h == "B_iso_or_equiv"), None)
+        u_col = next((headers.index(h) for h in headers if h == "U_iso_or_equiv"), None)
+        for line in block.group(2).splitlines():
+            line = line.strip()
+            if not line or line.startswith(("_", "#", "loop_")):
+                continue
+            vals = line.split()
+            if len(vals) < len(headers):
+                continue
+
+            def num(col):
+                if col is None:
+                    return None
+                v = re.sub(r"\(\d+\)$", "", vals[col])   # strip the e.s.d.
+                try:
+                    return float(v)
+                except ValueError:
+                    return None
+
+            b, u = num(b_col), num(u_col)
+            if b is None and u is not None:
+                b = 8.0 * np.pi ** 2 * u
+            out.append(b or 0.0)
+        break
+    return out
+
+
 def export_structure(cif_path, name, out_dir):
     """Expand a CIF to P1 with ASE and write cell + atoms as compact JSON."""
     from ase.io import read
@@ -88,6 +132,23 @@ def export_structure(cif_path, name, out_dir):
     cell = atoms.cell.cellpar()
     frac = atoms.get_scaled_positions()
     syms = atoms.get_chemical_symbols()
+
+    # ASE maps every expanded atom back to the site it came from, which is how
+    # occupancies and B values follow the symmetry expansion.
+    kinds = atoms.arrays.get("spacegroup_kinds")
+    occ_by_site = atoms.info.get("occupancy", {})
+    b_by_site = _site_displacements(cif_path)
+
+    def site_of(i):
+        return int(kinds[i]) if kinds is not None else i
+
+    def occ_of(i, sym):
+        site = occ_by_site.get(str(site_of(i)), {})
+        return float(site.get(sym, 1.0)) if site else 1.0
+
+    def b_of(i):
+        s = site_of(i)
+        return float(b_by_site[s]) if s < len(b_by_site) else 0.0
 
     doc = {
         "name": name,
@@ -100,9 +161,9 @@ def export_structure(cif_path, name, out_dir):
              "x": round(float(p[0]), 6),
              "y": round(float(p[1]), 6),
              "z": round(float(p[2]), 6),
-             "occ": 1.0,
-             "B": 0.0}
-            for s, p in zip(syms, frac)
+             "occ": round(occ_of(i, s), 4),
+             "B": round(b_of(i), 4)}
+            for i, (s, p) in enumerate(zip(syms, frac))
         ],
     }
     path = os.path.join(out_dir, f"{name}.json")
@@ -301,11 +362,27 @@ def main():
     print("colour maps:")
     export_colormaps(data_dir)
 
+    # Any CIF given on the command line is bundled as a selectable structure;
+    # with none given, the CsPbBr3 example is the default. The index file is
+    # what the app reads, so adding a structure needs no JavaScript edit.
     print("structures:")
     root = os.path.dirname(WEB)
-    cif = os.path.join(root, "examples", "cspbbr3.cif")
-    doc = export_structure(cif, "cspbbr3", data_dir)
-    doc["_cif_path"] = cif
+    default = sorted(glob.glob(os.path.join(root, "examples", "structures", "*.cif")))
+    cifs = sys.argv[1:] or default
+    docs = []
+    for cif in cifs:
+        if not os.path.isfile(cif):
+            sys.exit(f"no such CIF: {cif}")
+        name = os.path.splitext(os.path.basename(cif))[0]
+        d = export_structure(cif, name, data_dir)
+        d["_cif_path"] = cif
+        docs.append(d)
+    index = os.path.join(data_dir, "structures.json")
+    with open(index, "w", encoding="utf-8") as fh:
+        json.dump([d["name"] for d in docs], fh, separators=(",", ":"))
+    print(f"  index: {len(docs)} structure(s) -> "
+          f"{os.path.relpath(index, WEB)}")
+    doc = docs[0]
 
     print("parity fixture:")
     fx = build_fixture(doc)

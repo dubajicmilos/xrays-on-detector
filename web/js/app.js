@@ -25,15 +25,6 @@ const DETECTORS = [
   ["JUNGFRAU 1M", 1024, 1024, 0.075],
 ];
 
-const CELLS = [
-  ["Pseudocubic perovskite", 5.917, 5.917, 5.917, 90, 90, 90],
-  ["MAPbI3 cubic (340 K)", 6.29, 6.29, 6.29, 90, 90, 90],
-  ["Silicon", 5.431, 5.431, 5.431, 90, 90, 90],
-  ["LaB6", 4.1569, 4.1569, 4.1569, 90, 90, 90],
-  ["Tetragonal I4/mcm", 8.37, 8.37, 11.83, 90, 90, 90],
-  ["Monoclinic small molecule", 10, 12, 15, 90, 103, 90],
-];
-
 const TARGETS = [
   ["beam  +y", [0, 1, 0]],
   ["vertical  +x", [1, 0, 0]],
@@ -54,12 +45,12 @@ const $ = (id) => document.getElementById(id);
 
 const st = {
   angles: { mu: 0, eta: 0, chi: 0, phi: 0, delta: 0, gamma: 0 },
-  // 0.657444 A = 5.917/9 = a/9 for the default cell, i.e. 18.859 keV. At that
-  // wavelength the axis-aligned start is a zone axis with twelve reflections
+  // a/9 for the default structure (CsPbBr3, a = 5.87 A), i.e. 19.010 keV. At
+  // that wavelength the axis-aligned start is a zone axis with reflections
   // exactly on the Ewald sphere, so the detector has a pattern on it the
   // moment the page opens. Detune the energy and they go out, which is the
   // Bragg condition made visible.
-  wavelength: 5.917 / 9,
+  wavelength: 5.87 / 9,
   distance: 200,
   nFast: 1475,
   nSlow: 1679,
@@ -71,7 +62,7 @@ const st = {
   U: P.eye3(),
   Ubase: P.eye3(),
   rot: { rx: 0, ry: 0, rz: 0 },
-  cell: CELLS[0].slice(1),
+  cell: null, // set from the first bundled structure at boot
   atoms: null, // null => bare lattice
   B: null,
   hkl: null,
@@ -122,6 +113,13 @@ function rebuildReflections() {
     : P.latticeStructureFactors(st.B, st.hkl);
   needRebuild = false;
   return qmax;
+}
+
+function applyStructure(s) {
+  const c = s.cell;
+  st.cell = [c.a, c.b, c.c, c.alpha, c.beta, c.gamma];
+  st.atoms = s.atoms;
+  needRebuild = true;
 }
 
 function surfaceNormalLab() {
@@ -292,9 +290,7 @@ function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
   $("cellInfo").textContent =
     `a=${a.toFixed(4)} b=${b.toFixed(4)} c=${c.toFixed(4)} Å\n` +
     `α=${al.toFixed(2)} β=${be.toFixed(2)} γ=${ga.toFixed(2)}°` +
-    (st.atoms
-      ? `\n${st.atoms.length} atoms, real |F|²`
-      : "\nlattice only, no structure");
+    `\n${st.atoms.length} atoms, |F(hkl)|² from atomic form factors`;
 
   refreshUB();
 }
@@ -531,36 +527,14 @@ function bindInputs() {
   });
 
   const sel = $("structure");
-  CELLS.forEach(([n, ...cell], i) => {
-    const o = document.createElement("option");
-    o.value = `cell:${i}`;
-    o.textContent = `${n}  (a=${cell[0]} Å)`;
-    sel.appendChild(o);
-  });
   for (const s of structures) {
     const o = document.createElement("option");
-    o.value = `struct:${s.name}`;
-    o.textContent = `${s.name}  (${s.atoms.length} atoms, real |F|²)`;
+    o.value = s.name;
+    o.textContent = `${s.name.replace(/_/g, " ")}  (${s.atoms.length} atoms)`;
     sel.appendChild(o);
   }
   sel.addEventListener("change", () => {
-    const [kind, key] = sel.value.split(":");
-    if (kind === "cell") {
-      st.cell = CELLS[+key].slice(1);
-      st.atoms = null;
-    } else {
-      const s = structures.find((x) => x.name === key);
-      st.cell = [
-        s.cell.a,
-        s.cell.b,
-        s.cell.c,
-        s.cell.alpha,
-        s.cell.beta,
-        s.cell.gamma,
-      ];
-      st.atoms = s.atoms;
-    }
-    needRebuild = true;
+    applyStructure(structures.find((x) => x.name === sel.value));
     requestSim();
   });
 
@@ -943,15 +917,17 @@ async function boot() {
     grab("data/scattering_factors.json"),
     grab("data/colormaps.json"),
   ]);
-  structures = await Promise.all(
-    ["cspbbr3"].map((n) => grab(`data/${n}.json`)),
-  );
+  // data/structures.json is written by tools/export_web_data.py, so bundling
+  // another CIF is a re-export rather than a code change here.
+  const names = await grab("data/structures.json");
+  structures = await Promise.all(names.map((n) => grab(`data/${n}.json`)));
 
   detCanvas = $("detCanvas");
   detCtx = detCanvas.getContext("2d");
   scene = new InstrumentScene($("view3d"));
   scene.setDetectorImage(detCanvas);
 
+  applyStructure(structures[0]);
   buildMotorRows();
   buildRotRows();
   bindInputs();

@@ -1,0 +1,343 @@
+data_c
+_audit_creation_date              2014-08-14
+_audit_creation_method
+;
+Olex2 1.2
+(compiled 2014.07.22 svn.r2960 for OlexSys, GUI svn.r4862)
+;
+_publ_contact_author_address      ?
+_publ_contact_author_email        ?
+_publ_contact_author_name         ''
+_publ_contact_author_phone        ?
+_publ_section_references
+;
+Bourhis, L.J., Dolomanov, O.V., Gildea, R.J., Howard, J.A.K., Puschmann, H.
+ (2013). in preparation.
+
+Dolomanov, O.V., Bourhis, L.J., Gildea, R.J, Howard, J.A.K. & Puschmann, H.
+ (2009), J. Appl. Cryst. 42, 339-341.
+;
+_chemical_formula_moiety          'I3 Pb, C'
+_chemical_formula_sum             'C I3 Pb'
+_chemical_formula_weight          599.91
+loop_
+  _atom_type_symbol
+  _atom_type_scat_dispersion_real
+  _atom_type_scat_dispersion_imag
+  _atom_type_scat_Cromer_Mann_a1
+  _atom_type_scat_Cromer_Mann_a2
+  _atom_type_scat_Cromer_Mann_a3
+  _atom_type_scat_Cromer_Mann_a4
+  _atom_type_scat_Cromer_Mann_b1
+  _atom_type_scat_Cromer_Mann_b2
+  _atom_type_scat_Cromer_Mann_b3
+  _atom_type_scat_Cromer_Mann_b4
+  _atom_type_scat_Cromer_Mann_c
+  _atom_type_scat_source
+  _atom_type_scat_dispersion_source
+ I -0.41187 1.83264 20.14720 18.99490 7.51380 2.27350 4.34700 0.38140 27.76600
+ 66.87760 4.07119989395
+ 'International Tables Volume C Table 6.1.1.4 (pp. 500-502)'
+ 'Henke, Gullikson and Davis, At. Data and Nucl. Data Tables, 1993, 54, 2'
+ Pb -3.20855 10.15388 31.06170 13.06370 18.44200 5.96960 0.69020 2.35760
+ 8.61800 47.25790 13.4118003845
+ 'International Tables Volume C Table 6.1.1.4 (pp. 500-502)'
+ 'Henke, Gullikson and Davis, At. Data and Nucl. Data Tables, 1993, 54, 2'
+ C 0.00347 0.00161 2.31000 1.02000 1.58860 0.86500 20.84390 10.20750 0.56870
+ 51.65120 0.215599998832
+ 'International Tables Volume C Table 6.1.1.4 (pp. 500-502)'
+ 'Henke, Gullikson and Davis, At. Data and Nucl. Data Tables, 1993, 54, 2'
+
+_space_group_crystal_system       'cubic'
+_space_group_IT_number            221
+_space_group_name_H-M_alt         'P m -3 m'
+_space_group_name_Hall            '-P 4 2 3'
+loop_
+  _space_group_symop_id
+  _space_group_symop_operation_xyz
+ 1 x,y,z
+ 2 x,-z,y
+ 3 x,z,-y
+ 4 z,y,-x
+ 5 -z,y,x
+ 6 -y,x,z
+ 7 y,-x,z
+ 8 z,x,y
+ 9 y,z,x
+ 10 -y,-z,x
+ 11 z,-x,-y
+ 12 -y,z,-x
+ 13 -z,-x,y
+ 14 -z,x,-y
+ 15 y,-z,-x
+ 16 x,-y,-z
+ 17 -x,y,-z
+ 18 -x,-y,z
+ 19 y,x,-z
+ 20 -y,-x,-z
+ 21 z,-y,x
+ 22 -z,-y,-x
+ 23 -x,z,y
+ 24 -x,-z,-y
+ 25 -x,-y,-z
+ 26 -x,z,-y
+ 27 -x,-z,y
+ 28 -z,-y,x
+ 29 z,-y,-x
+ 30 y,-x,-z
+ 31 -y,x,-z
+ 32 -z,-x,-y
+ 33 -y,-z,-x
+ 34 y,z,-x
+ 35 -z,x,y
+ 36 y,-z,x
+ 37 z,x,-y
+ 38 z,-x,y
+ 39 -y,z,x
+ 40 -x,y,z
+ 41 x,-y,z
+ 42 x,y,-z
+ 43 -y,-x,z
+ 44 y,x,z
+ 45 -z,y,-x
+ 46 z,y,x
+ 47 x,-z,-y
+ 48 x,z,y
+
+_symmetry_Int_Tables_number       221
+_cell_length_a                    6.30628(17)
+_cell_length_b                    6.30628(17)
+_cell_length_c                    6.30628(17)
+_cell_angle_alpha                 90
+_cell_angle_beta                  90
+_cell_angle_gamma                 90
+_cell_volume                      250.796(12)
+_cell_formula_units_Z             1
+_cell_measurement_reflns_used     1294
+_cell_measurement_temperature     343
+_cell_measurement_theta_max       28.6870
+_cell_measurement_theta_min       3.2290
+_exptl_absorpt_coefficient_mu     25.959
+_exptl_absorpt_correction_T_max   0.120
+_exptl_absorpt_correction_T_min   0.024
+_exptl_absorpt_correction_type    analytical
+_exptl_absorpt_process_details
+;
+CrysAlisPro, Agilent Technologies,
+Version 1.171.36.32 (release 02-08-2013 CrysAlis171 .NET)
+(compiled Aug  2 2013,16:46:58)
+Analytical numeric absorption correction using a multifaceted crystal
+			model based on expressions derived by R.C. Clark & J.S. Reid.
+(Clark, R. C. & Reid, J. S. (1995). Acta Cryst. A51, 887-897)
+;
+_exptl_crystal_colour             black
+_exptl_crystal_colour_primary     black
+_exptl_crystal_density_diffrn     3.9717
+_exptl_crystal_description        block
+_exptl_crystal_F_000              243.0001
+_exptl_crystal_size_max           0.2529
+_exptl_crystal_size_mid           0.1869
+_exptl_crystal_size_min           0.1343
+_diffrn_reflns_av_R_equivalents   0.0854
+_diffrn_reflns_av_unetI/netI      0.0246
+_diffrn_reflns_limit_h_max        8
+_diffrn_reflns_limit_h_min        -8
+_diffrn_reflns_limit_k_max        8
+_diffrn_reflns_limit_k_min        -8
+_diffrn_reflns_limit_l_max        7
+_diffrn_reflns_limit_l_min        -8
+_diffrn_reflns_number             1899
+_diffrn_reflns_theta_full         26.0000
+_diffrn_reflns_theta_max          29.64
+_diffrn_reflns_theta_min          3.23
+_diffrn_ambient_temperature       343
+_diffrn_detector_area_resol_mean  8.0419
+_diffrn_measured_fraction_theta_full 1.0000
+_diffrn_measured_fraction_theta_max 1.0000
+_diffrn_measurement_details
+;
+#__ type_ start__ end____ width___ exp.time_
+  1 omega  -98.00    4.00   0.7500    6.0000
+omega____ theta____ kappa____ phi______ frames
+    -      -24.7881  -57.0000  150.0000 136
+
+#__ type_ start__ end____ width___ exp.time_
+  2 omega -105.00   51.00   0.7500    6.0000
+omega____ theta____ kappa____ phi______ frames
+    -      -24.7881  -19.0000  -90.0000 208
+
+#__ type_ start__ end____ width___ exp.time_
+  3 omega   34.00   95.50   0.7500    6.0000
+omega____ theta____ kappa____ phi______ frames
+    -       26.8193  179.0000 -180.0000 82
+
+#__ type_ start__ end____ width___ exp.time_
+  4 omega   34.00  112.00   0.7500    6.0000
+omega____ theta____ kappa____ phi______ frames
+    -       26.8193 -179.0000   30.0000 104
+;
+_diffrn_measurement_device_type   'Xcalibur, Eos, Nova'
+_diffrn_measurement_method        '\w scans'
+_diffrn_orient_matrix_UB_11       -0.0888262000
+_diffrn_orient_matrix_UB_12       -0.0503758000
+_diffrn_orient_matrix_UB_13       -0.0470708000
+_diffrn_orient_matrix_UB_21       -0.0631724000
+_diffrn_orient_matrix_UB_22       0.0903641000
+_diffrn_orient_matrix_UB_23       0.0222688000
+_diffrn_orient_matrix_UB_31       0.0279833000
+_diffrn_orient_matrix_UB_32       0.0440701000
+_diffrn_orient_matrix_UB_33       -0.0996542000
+_diffrn_radiation_monochromator   mirror
+_diffrn_radiation_type            'Mo K\a'
+_diffrn_radiation_wavelength      0.71073
+_diffrn_source                    'Mova (Mo) X-ray Source'
+_reflns_Friedel_coverage          0.0
+_reflns_limit_h_max               5
+_reflns_limit_h_min               0
+_reflns_limit_k_max               8
+_reflns_limit_k_min               1
+_reflns_limit_l_max               6
+_reflns_limit_l_min               0
+_reflns_number_gt                 100
+_reflns_number_total              103
+_reflns_odcompleteness_completeness 100.00
+_reflns_odcompleteness_iscentric  1
+_reflns_odcompleteness_theta      27.42
+_reflns_threshold_expression      I>=2u(I)
+_computing_cell_refinement
+;
+CrysAlisPro, Agilent Technologies,
+Version 1.171.36.32 (release 02-08-2013 CrysAlis171 .NET)
+(compiled Aug  2 2013,16:46:58)
+;
+_computing_data_collection
+;
+CrysAlisPro, Agilent Technologies,
+Version 1.171.36.32 (release 02-08-2013 CrysAlis171 .NET)
+(compiled Aug  2 2013,16:46:58)
+;
+_computing_data_reduction
+;
+CrysAlisPro, Agilent Technologies,
+Version 1.171.36.32 (release 02-08-2013 CrysAlis171 .NET)
+(compiled Aug  2 2013,16:46:58)
+;
+_computing_molecular_graphics     'Olex2 (Dolomanov et al., 2009)'
+_computing_publication_material   'Olex2 (Dolomanov et al., 2009)'
+_computing_structure_refinement   'olex2.refine (Bourhis et al., 2013)'
+_computing_structure_solution     'olex2.solve (Bourhis et al., 2013)'
+_refine_diff_density_max          1.4008
+_refine_diff_density_min          -1.5899
+_refine_diff_density_rms          0.2222
+_refine_ls_d_res_high             0.7187
+_refine_ls_d_res_low              6.3063
+_refine_ls_extinction_expression  Fc^*^=kFc[1+0.001xFc^2^\l^3^/sin(2\q)]^-1/4^
+_refine_ls_goodness_of_fit_ref    1.1014
+_refine_ls_hydrogen_treatment     undef
+_refine_ls_matrix_type            full
+_refine_ls_number_constraints     0
+_refine_ls_number_parameters      5
+_refine_ls_number_reflns          103
+_refine_ls_number_restraints      0
+_refine_ls_R_factor_all           0.0382
+_refine_ls_R_factor_gt            0.0367
+_refine_ls_restrained_S_all       1.1014
+_refine_ls_shift/su_max           0.0139
+_refine_ls_shift/su_mean          0.0051
+_refine_ls_structure_factor_coef  Fsqd
+_refine_ls_weighting_details
+'w=1/[\s^2^(Fo^2^)+(0.0658P)^2^] where P=(Fo^2^+2Fc^2^)/3'
+_refine_ls_weighting_scheme       calc
+_refine_ls_wR_factor_gt           0.0902
+_refine_ls_wR_factor_ref          0.0910
+_olex2_refinement_description
+;
+;
+_atom_sites_solution_primary      iterative
+loop_
+  _atom_site_label
+  _atom_site_type_symbol
+  _atom_site_fract_x
+  _atom_site_fract_y
+  _atom_site_fract_z
+  _atom_site_U_iso_or_equiv
+  _atom_site_adp_type
+  _atom_site_occupancy
+  _atom_site_site_symmetry_order
+  _atom_site_refinement_flags_posn
+  _atom_site_refinement_flags_adp
+  _atom_site_refinement_flags_occupancy
+ Pb1 Pb 0.5 0.5 0.5 0.0446(6) Uani 0.999840 48 S T P
+ I1 I 1.0 0.5 0.5 0.1358(12) Uani 1.000000 16 S T P
+ C1 C 1.0 0.0 0.0 0.21(6) Uiso 0.999840 48 S T P
+
+loop_
+  _atom_site_aniso_label
+  _atom_site_aniso_U_11
+  _atom_site_aniso_U_22
+  _atom_site_aniso_U_33
+  _atom_site_aniso_U_12
+  _atom_site_aniso_U_13
+  _atom_site_aniso_U_23
+ Pb1 0.0446(6) 0.0446(6) 0.0446(6) -0.000000 -0.000000 0.000000
+ I1 0.0345(8) 0.1864(18) 0.1864(18) -0.000000 -0.000000 0.000000
+
+loop_
+  _geom_bond_atom_site_label_1
+  _geom_bond_atom_site_label_2
+  _geom_bond_distance
+  _geom_bond_site_symmetry_2
+  _geom_bond_publ_flag
+ Pb1 I1 3.1531 4_556 ?
+ Pb1 I1 3.1531 . ?
+ Pb1 I1 3.1531 6_645 ?
+ Pb1 I1 3.1531 6_655 ?
+ Pb1 I1 3.1531 4_557 ?
+ Pb1 I1 3.1531 1_455 ?
+
+loop_
+  _geom_angle_atom_site_label_1
+  _geom_angle_atom_site_label_2
+  _geom_angle_atom_site_label_3
+  _geom_angle
+  _geom_angle_site_symmetry_1
+  _geom_angle_site_symmetry_3
+  _geom_angle_publ_flag
+ I1 Pb1 I1 90.0 1_455 4_556 ?
+ I1 Pb1 I1 90.0 6_655 1_455 ?
+ I1 Pb1 I1 90.0 6_645 . ?
+ I1 Pb1 I1 90.0 4_557 1_455 ?
+ I1 Pb1 I1 180.0 . 1_455 ?
+ I1 Pb1 I1 90.0 6_645 4_556 ?
+ I1 Pb1 I1 90.0 6_655 . ?
+ I1 Pb1 I1 90.0 6_645 4_557 ?
+ I1 Pb1 I1 180.0 6_655 6_645 ?
+ I1 Pb1 I1 90.0 4_557 . ?
+ I1 Pb1 I1 90.0 6_645 1_455 ?
+ I1 Pb1 I1 90.0 6_655 4_557 ?
+ I1 Pb1 I1 180.0 4_557 4_556 ?
+ I1 Pb1 I1 90.0 6_655 4_556 ?
+ I1 Pb1 I1 90.0 . 4_556 ?
+ Pb1 I1 Pb1 180.0 5_755 5_655 ?
+
+loop_
+  _exptl_crystal_face_index_h
+  _exptl_crystal_face_index_k
+  _exptl_crystal_face_index_l
+  _exptl_crystal_face_perp_dist
+  _exptl_oxdiff_crystal_face_indexfrac_h
+  _exptl_oxdiff_crystal_face_indexfrac_k
+  _exptl_oxdiff_crystal_face_indexfrac_l
+  _exptl_oxdiff_crystal_face_x
+  _exptl_oxdiff_crystal_face_y
+  _exptl_oxdiff_crystal_face_z
+ 3 2 -8 0.0997 3.1777 2.4960 -7.9164 -0.0354 -0.1515 0.9878
+ -6 6 0 0.0482 -6.3855 6.1639 0.4952 0.2334 0.9714 0.0436
+ 0 -5 7 0.0912 -0.0476 -5.1881 7.2196 -0.0742 -0.3050 -0.9494
+ 6 -7 0 0.0742 6.0298 -6.5138 0.4880 -0.2304 -0.9587 -0.1670
+ 3 4 -7 0.1008 2.9595 4.2231 -7.2387 -0.1349 0.0335 0.9903
+ 5 4 6 0.0772 4.7183 4.2143 6.2559 -0.9259 0.2221 -0.3057
+ -3 -5 7 0.0958 -3.4431 -4.6737 6.7293 0.2245 -0.0550 -0.9729
+ -4 -3 -7 0.0968 -4.0746 -3.3927 -7.1452 0.8692 -0.2083 0.4485
+
+_olex2_submission_special_instructions 'No special instructions were received'
