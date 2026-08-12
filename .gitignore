@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Development scratch: render captures from tools/devserver.py
+tools/_shots/
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

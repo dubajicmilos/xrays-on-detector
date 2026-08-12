@@ -1,0 +1,464 @@
+/* Diffraction Game. Dark, dense, instrument-like. */
+:root {
+  --bg: #0b0e18;
+  --panel: #12151f;
+  --panel2: #161b28;
+  --line: #262d40;
+  --line2: #333c54;
+  --text: #d6dcec;
+  --dim: #8794b0;
+  --accent: #6f9ee0;
+  --good: #8fe3c0;
+  --warn: #f0a05a;
+  --bad: #f0725a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    13px/1.45 "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 396px minmax(0, 1fr) minmax(280px, 34vw);
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------- panel */
+
+#panel {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 14px 40px;
+}
+
+.brand h1 {
+  margin: 0 0 4px;
+  font-size: 19px;
+  letter-spacing: -0.2px;
+  background: linear-gradient(92deg, #8fd8ff, #b9a7ff 60%, #ffb0c8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand p {
+  margin: 0 0 14px;
+  color: var(--dim);
+  font-size: 11.5px;
+}
+
+.grp {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 10px 10px 11px;
+  margin-bottom: 11px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent);
+}
+.grp h2 {
+  margin: -18px 0 9px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #93a3c8;
+  background: var(--panel);
+  display: inline-block;
+  padding: 0 6px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.row > label {
+  flex: 0 0 92px;
+  color: var(--dim);
+  font-size: 11.5px;
+}
+.row .u {
+  color: var(--dim);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.hidden {
+  display: none !important;
+}
+.sub {
+  margin: 8px 0 0 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+.hint {
+  margin: 8px 0 5px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+input,
+select,
+button {
+  font: inherit;
+  color: var(--text);
+  background: #1a2030;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 3px 6px;
+  min-width: 0;
+}
+input[type="number"] {
+  flex: 1 1 auto;
+  width: 100%;
+}
+input.idx {
+  flex: 0 0 44px;
+  width: 44px;
+  text-align: center;
+}
+select {
+  flex: 1 1 auto;
+}
+button {
+  cursor: pointer;
+  background: #1e2536;
+}
+button:hover {
+  background: #29334a;
+  border-color: #4d5b80;
+}
+button:active {
+  background: #161c29;
+}
+button:disabled {
+  color: #5a6076;
+  border-color: #262c3c;
+  cursor: default;
+}
+button.wide {
+  width: 100%;
+  margin-top: 6px;
+}
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.radio {
+  display: block;
+  margin-bottom: 5px;
+  cursor: pointer;
+}
+.radio em {
+  color: var(--dim);
+  font-style: normal;
+  font-size: 11px;
+}
+.checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 8px;
+  margin-bottom: 7px;
+}
+.checks label {
+  cursor: pointer;
+  font-size: 11.5px;
+}
+
+.readout {
+  font:
+    11px/1.5 Consolas,
+    ui-monospace,
+    monospace;
+  color: var(--good);
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.matrix {
+  font:
+    11px/1.45 Consolas,
+    ui-monospace,
+    monospace;
+  color: var(--good);
+  background: #10141f;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px;
+  margin: 6px 0 0;
+  overflow-x: auto;
+}
+.align {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+.align .tag {
+  color: var(--dim);
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+
+/* "point (h k l) along <direction>" laid out on two full-width lines, so the
+   indices and the direction names are never squeezed or clipped. */
+.alignblock {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 7px;
+  margin-bottom: 7px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.alignline {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.alignline + .alignline {
+  margin-top: 5px;
+}
+.alignline .tag {
+  flex: 0 0 46px;
+  color: var(--dim);
+  font-size: 11px;
+  text-align: right;
+}
+.alignline .idx {
+  flex: 0 0 42px;
+  width: 42px;
+}
+.alignline .kind {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.alignline .go {
+  flex: 0 0 52px;
+}
+
+/* motor rows */
+.motor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.motor .name {
+  flex: 0 0 46px;
+  font-weight: 700;
+  font-size: 11.5px;
+}
+.motor input[type="range"] {
+  flex: 1 1 auto;
+  accent-color: var(--accent);
+  min-width: 40px;
+}
+.motor input[type="number"] {
+  flex: 0 0 66px;
+  width: 66px;
+}
+.motor .run {
+  flex: 0 0 28px;
+  width: 28px;
+  padding: 3px 0;
+  text-align: center;
+}
+.motor .run.on {
+  background: #2f5d46;
+  border-color: #57a882;
+  color: #b9f0d4;
+}
+
+.tiny {
+  color: #5d6884;
+  font-size: 10.5px;
+  margin-top: 14px;
+}
+.tiny a {
+  color: #7f8fb5;
+}
+
+/* ---------------------------------------------------------------- stage */
+
+#stage {
+  position: relative;
+  min-width: 0;
+}
+#view3d {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+#legend {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font:
+    11px/1.6 Consolas,
+    ui-monospace,
+    monospace;
+  color: #a5b2cd;
+  pointer-events: none;
+  text-shadow: 0 1px 3px #000;
+}
+#legend i {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  margin-right: 7px;
+  vertical-align: middle;
+  border-radius: 1px;
+}
+#hint3d {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  font-size: 10.5px;
+  color: #6e7d9b;
+  pointer-events: none;
+}
+#panelToggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: none;
+}
+
+/* ------------------------------------------------------------ detector */
+
+#detPane {
+  position: relative;
+  background: #090b12;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+  overflow: hidden;
+}
+#detViewport {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+#detViewport.dragging {
+  cursor: grabbing;
+}
+#detCanvas {
+  image-rendering: pixelated;
+  border: 1px solid #35405c;
+  background: #000;
+  transform-origin: center center;
+  will-change: transform;
+}
+#detOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+#detZoom {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #0d1220cc;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 5px;
+  backdrop-filter: blur(3px);
+}
+#detZoom button {
+  padding: 1px 7px;
+  min-width: 24px;
+}
+#detZoomLabel {
+  font:
+    10.5px Consolas,
+    ui-monospace,
+    monospace;
+  color: var(--dim);
+  min-width: 42px;
+  text-align: center;
+}
+#detInfo {
+  position: absolute;
+  left: 10px;
+  bottom: 6px;
+  font:
+    10.5px Consolas,
+    ui-monospace,
+    monospace;
+  color: #7f8da9;
+}
+
+#boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--dim);
+  z-index: 50;
+}
+#boot.err {
+  color: var(--bad);
+  padding: 30px;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 1200px) {
+  #app {
+    grid-template-columns: 340px minmax(0, 1fr) minmax(220px, 30vw);
+  }
+}
+@media (max-width: 900px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 40vh;
+  }
+  #panel {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(92vw, 396px);
+    z-index: 20;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 0 0 40px #000a;
+  }
+  #panel.open {
+    transform: none;
+  }
+  #panelToggle {
+    display: block;
+  }
+  #detPane {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
