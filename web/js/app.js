@@ -1,3 +1,5 @@
+/*! The Game of Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
+
 /**
  * Diffraction Game: wiring between the physics, the 3D scene and the controls.
  *
@@ -9,6 +11,7 @@ import * as P from "./physics.js";
 import { blockedGeometry, paint, rayGeometry, renderFrame } from "./render.js";
 import { CifError, parseCif, setElements } from "./cif.js";
 import { InstrumentScene } from "./scene.js";
+import { CREDIT, logCredit, mountCredit } from "./credit.js";
 
 const HC = 12.398419843320026; // keV.Angstrom
 
@@ -1022,6 +1025,8 @@ async function boot() {
   bindInputs();
   bindDetectorZoom();
   bindDetectorHover();
+  mountCredit($("panel"));
+  logCredit();
 
   new ResizeObserver(() => {
     scene.resize();
@@ -1037,6 +1042,7 @@ async function boot() {
   // test harness drive the page without waiting on animation frames, and lets
   // anyone script the instrument from the console.
   window.diffractionGame = {
+    credit: CREDIT,
     state: st,
     simulate,
     scene,
