@@ -1,0 +1,114 @@
+/*! Single-Crystal Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
+
+/* Layered on ../css/app.css, which owns the palette and the control styling.
+   Only the differences live here: this app is a sidebar and one plot, where
+   the Game of Diffraction is a sidebar, a 3D stage and a detector pane. */
+
+#app {
+  grid-template-columns: 330px minmax(0, 1fr);
+}
+
+#stage {
+  background: #090b12;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+  overflow: hidden;
+}
+
+#pattern {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#overlay {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  pointer-events: none;
+  text-shadow: 0 1px 3px #000;
+}
+
+#title {
+  font:
+    12px/1.6 Consolas,
+    ui-monospace,
+    monospace;
+  color: #a5b2cd;
+  white-space: pre;
+}
+
+#hover {
+  margin-top: 6px;
+  font:
+    11.5px/1.5 Consolas,
+    ui-monospace,
+    monospace;
+  color: var(--good);
+  white-space: pre;
+  min-height: 3em;
+}
+
+#status {
+  position: absolute;
+  left: 14px;
+  bottom: 8px;
+  font:
+    10.5px Consolas,
+    ui-monospace,
+    monospace;
+  color: #7f8da9;
+  pointer-events: none;
+  max-width: calc(100% - 28px);
+}
+
+#status.warn {
+  color: var(--warn);
+}
+#status.bad {
+  color: var(--bad);
+}
+
+.quickzone {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.quickzone button {
+  flex: 1 1 auto;
+  padding: 3px 0;
+  font:
+    11px Consolas,
+    ui-monospace,
+    monospace;
+}
+
+.row input[type="range"] {
+  flex: 1 1 auto;
+  accent-color: var(--accent);
+  min-width: 40px;
+}
+
+/* The unit slot carries computed readouts here, so it needs room and a
+   monospace face to stop the panel twitching as the numbers change. */
+.row .u {
+  font:
+    10.5px Consolas,
+    ui-monospace,
+    monospace;
+  min-width: 34px;
+}
+
+.readout {
+  color: var(--good);
+}
+
+@media (max-width: 900px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+  #stage {
+    border-left: 0;
+  }
+}

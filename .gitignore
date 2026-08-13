@@ -8,6 +8,10 @@ venv/
 # Development scratch: render captures from tools/devserver.py
 tools/_shots/
 
+# Local-only assets kept out of the repository: never commit them.
+/Images/
+/Single crystal app/
+
 # Editor and OS
 .vscode/
 .idea/
