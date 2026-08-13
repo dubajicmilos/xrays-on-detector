@@ -1,14 +1,18 @@
-"""Sync the Diffraction Game into an al-folio Jekyll site.
+"""Sync the browser apps into an al-folio Jekyll site.
 
     python tools/deploy_to_site.py <path-to-site-repo> [--nav] [--page-only]
 
-Copies web/ into <site>/assets/diffraction/ and writes the two Markdown pages:
-<site>/_pages/diffraction.md (the game) and diffraction-guide.md (how to use).
+Copies web/ into <site>/assets/diffraction/ and writes three Markdown pages:
+
+    _pages/diffraction.md                 the game            /diffraction/
+    _pages/diffraction-guide.md           how to use it       /diffraction/guide/
+    _pages/diffraction-single-crystal.md  the CIF viewer      /diffraction/single-crystal/
+
 Run it again after any tweak; it is idempotent.
 
   --nav        set nav: true so the tab appears in the site menu
                (leave it off to publish the page without advertising it yet)
-  --page-only  rewrite only the Markdown page, leave the app files alone
+  --page-only  rewrite only the Markdown pages, leave the app files alone
 
 Nothing is committed or pushed; that stays a manual step.
 """
@@ -23,7 +27,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "web")
 SUBDIR = os.path.join("assets", "diffraction")
-COPY = ["index.html", "css", "js", "lib", "data"]        # note: test/ is not shipped
+COPY = ["index.html", "css", "js", "lib", "data", "img", "sc"]  # note: test/ is not shipped
 # NB: the folder is "lib", not "vendor". al-folio's .gitignore and its
 # _config.yml exclude list both carry a bare "vendor" entry, which matches at
 # any depth, so a vendor/ folder here would be neither committed nor built.
@@ -184,8 +188,57 @@ The simulator follows the six-circle convention of
 """
 
 
+SINGLE = """---
+layout: page
+permalink: /diffraction/single-crystal/
+title: Single-Crystal Diffraction
+nav: false
+description: Kinematic diffraction from any CIF you upload: reciprocal-lattice sections down any zone axis, electron diffraction and powder patterns, for X-rays, neutrons and electrons.
+_styles: >
+  .game-shell {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    height: min(86vh, 940px);
+    min-height: 520px;
+    border: 0;
+  }
+  .game-shell iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .game-note { font-size: 0.85rem; opacity: 0.75; margin-top: 0.6rem; }
+__BUTTON_CSS__---
+
+<div class="game-buttons">
+<a class="game-launch" href="{{ '/assets/diffraction/sc/index.html' | relative_url }}"
+   target="_blank" rel="noopener">Open full screen &#8599;</a>
+<a class="game-launch" href="{{ '/diffraction/' | relative_url }}">The Game of Diffraction</a>
+</div>
+
+Upload a CIF and look at its diffraction pattern. Choose any zone axis
+`[uvw]` and any layer, so `[100]` at layer 0 gives the *0kl* section and layer
+3 the *3kl* one, and `[110]` or `[123]` give the diagonal cuts. Switch between
+X-rays, neutrons and electrons, or between an undistorted reciprocal-lattice
+section, a selected-area electron pattern with its higher-order Laue zones,
+and a powder trace.
+
+The symmetry in the file is expanded to P1 before the structure factors are
+summed, so a CIF giving only an asymmetric unit is handled correctly. The
+numbers agree with
+[pymatgen](https://pymatgen.org/) to better than 0.2 on a 0-100 intensity
+scale across every bundled structure.
+
+<div class="game-shell">
+  <iframe src="{{ '/assets/diffraction/sc/index.html' | relative_url }}"
+          title="Single-Crystal Diffraction"
+          loading="lazy"
+          allow="fullscreen"></iframe>
+</div>
+
+<p class="game-note">Works best on a desktop browser. Nothing you upload
+leaves your machine: the CIF is read in the browser.</p>
+"""
+
 PAGE = PAGE.replace("__BUTTON_CSS__", BUTTON_CSS)
 GUIDE = GUIDE.replace("__BUTTON_CSS__", BUTTON_CSS)
+SINGLE = SINGLE.replace("__BUTTON_CSS__", BUTTON_CSS)
 
 
 def _fix_case(dst):
@@ -269,7 +322,8 @@ def main():
     # The guide is its own page rather than a panel on the game page, so
     # opening it does not push the app down the screen.
     pages = [("diffraction.md", PAGE.replace("{nav}", "true" if args.nav else "false")),
-             ("diffraction-guide.md", GUIDE)]
+             ("diffraction-guide.md", GUIDE),
+             ("diffraction-single-crystal.md", SINGLE)]
     for name, text in pages:
         page_path = os.path.join(site, "_pages", name)
         old = (open(page_path, encoding="utf-8").read()
@@ -287,6 +341,8 @@ def main():
     print(f"app files:   {os.path.join(SUBDIR)}  ({total / 1024:.0f} kB on disk)")
     print(f"pages:       _pages/diffraction.md  (nav: {'true' if args.nav else 'false'})")
     print(f"             _pages/diffraction-guide.md  -> /diffraction/guide/")
+    print(f"             _pages/diffraction-single-crystal.md"
+          f"  -> /diffraction/single-crystal/")
     if changed:
         print(f"changed {len(changed)} file(s):")
         for c in changed[:20]:

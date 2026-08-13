@@ -8,6 +8,12 @@ venv/
 # Development scratch: render captures from tools/devserver.py
 tools/_shots/
 
+# Private reference material. Screenshots of a commercial application and
+# other images kept locally as a design reference. These are not ours to
+# publish: never commit them.
+/Images/
+/Single crystal app/
+
 # Editor and OS
 .vscode/
 .idea/

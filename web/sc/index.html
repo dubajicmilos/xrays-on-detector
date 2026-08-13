@@ -1,0 +1,173 @@
+<!doctype html>
+<!--
+  Single-Crystal Diffraction
+  © 2026 Miloš Dubajić · https://dubajicmilos.github.io/diffraction/single-crystal/
+  Source: https://github.com/dubajicmilos/xrays-on-detector
+
+  Released under the MIT licence, which requires this notice to be kept in all
+  copies and substantial portions of the software. js/credit.js carries the
+  same notice and is what puts it on screen; please leave both in place.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Single-Crystal Diffraction</title>
+    <meta
+      name="description"
+      content="Kinematic single-crystal diffraction from any CIF, in the browser: reciprocal-lattice sections down any zone axis, electron diffraction and powder patterns, for X-rays, neutrons and electrons."
+    />
+    <meta name="author" content="Miloš Dubajić" />
+    <meta name="copyright" content="© 2026 Miloš Dubajić" />
+    <link
+      rel="license"
+      href="https://github.com/dubajicmilos/xrays-on-detector/blob/main/LICENSE"
+    />
+    <link rel="stylesheet" href="../css/app.css" />
+    <link rel="stylesheet" href="css/sc.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="panel">
+        <header class="brand">
+          <h1>Single-Crystal Diffraction</h1>
+          <p>Any CIF. Any zone axis. X-rays, neutrons or electrons.</p>
+        </header>
+
+        <section class="grp">
+          <h2>Structure</h2>
+          <div class="row">
+            <label>Bundled</label><select id="structure"></select>
+          </div>
+          <button class="wide" id="uploadBtn">Upload a CIF…</button>
+          <input type="file" id="cifFile" accept=".cif,.txt" hidden />
+          <div class="readout" id="structInfo"></div>
+          <div class="hint" id="cifNote"></div>
+        </section>
+
+        <section class="grp">
+          <h2>Simulate</h2>
+          <div class="row">
+            <label>Pattern</label><select id="mode">
+              <option value="section">Reciprocal-lattice section</option>
+              <option value="saed">Electron diffraction (SAED)</option>
+              <option value="powder">Powder pattern</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Radiation</label><select id="radiation">
+              <option value="xray">X-rays</option>
+              <option value="neutron">Neutrons</option>
+              <option value="electron">Electrons</option>
+            </select>
+          </div>
+          <div class="hint" id="modeNote"></div>
+        </section>
+
+        <section class="grp" id="grpZone">
+          <h2>Zone axis and layer</h2>
+          <div class="row">
+            <label>[u v w]</label>
+            <input type="number" class="idx" id="zu" step="1" value="0" />
+            <input type="number" class="idx" id="zv" step="1" value="0" />
+            <input type="number" class="idx" id="zw" step="1" value="1" />
+          </div>
+          <div class="row" id="rowLayer">
+            <label>Layer n</label>
+            <input type="number" class="idx" id="layer" step="1" value="0" />
+            <span class="u" id="zoneLaw"></span>
+          </div>
+          <div class="quickzone">
+            <button data-zone="0,0,1">001</button>
+            <button data-zone="1,0,0">100</button>
+            <button data-zone="0,1,0">010</button>
+            <button data-zone="1,1,0">110</button>
+            <button data-zone="1,1,1">111</button>
+          </div>
+        </section>
+
+        <section class="grp">
+          <h2>Beam</h2>
+          <div class="row">
+            <label>d min</label
+            ><input type="number" id="dmin" step="0.05" min="0.05" value="0.8" />
+            <span class="u">Å</span>
+          </div>
+          <div class="row" id="rowWavelength">
+            <label>Wavelength</label
+            ><input type="number" id="wl" step="0.01" min="0.05" value="1.5406" />
+            <span class="u">Å</span>
+          </div>
+          <div class="row" id="rowKv">
+            <label>Voltage</label
+            ><input type="number" id="kv" step="10" min="20" value="200" />
+            <span class="u">kV</span>
+          </div>
+          <div class="row" id="rowThickness">
+            <label>Thickness</label
+            ><input type="number" id="thickness" step="5" min="1" value="50" />
+            <span class="u">Å</span>
+          </div>
+          <div class="row" id="rowZones">
+            <label>Laue zones</label
+            ><input type="number" class="idx" id="zones" step="1" min="0" max="6" value="0" />
+            <span class="u" id="zoneRings"></span>
+          </div>
+          <div class="row" id="rowTtMax">
+            <label>2θ max</label
+            ><input type="number" id="ttmax" step="5" min="0.5" max="179" value="120" />
+            <span class="u">°</span>
+          </div>
+        </section>
+
+        <section class="grp">
+          <h2>Display</h2>
+          <div class="row">
+            <label>Contrast</label
+            ><input type="range" id="gain" min="0" max="60" value="0" />
+            <span class="u" id="gainLabel">×1</span>
+          </div>
+          <div class="row">
+            <label>Spot size</label
+            ><input type="range" id="spotSize" min="2" max="26" value="9" />
+          </div>
+          <div class="row">
+            <label>Label above</label
+            ><input type="range" id="labelThr" min="0" max="100" value="35" />
+            <span class="u" id="labelThrLabel">35%</span>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="logScale" checked /> log intensity</label>
+            <label><input type="checkbox" id="showLabels" checked /> hkl labels</label>
+            <label><input type="checkbox" id="showRings" /> Laue rings</label>
+          </div>
+          <div class="row">
+            <label>Colours</label><select id="colormap"></select>
+          </div>
+        </section>
+
+        <section class="grp">
+          <h2>Export</h2>
+          <button class="wide" id="savePng">Save image (PNG)</button>
+          <button class="wide" id="saveTable">Reflection table (.txt)</button>
+        </section>
+      </aside>
+
+      <main id="stage">
+        <canvas id="pattern"></canvas>
+        <div id="overlay">
+          <div id="title"></div>
+          <div id="hover"></div>
+        </div>
+        <div id="status"></div>
+        <button id="panelToggle">☰</button>
+      </main>
+    </div>
+
+    <div id="boot">loading…</div>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

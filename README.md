@@ -173,6 +173,53 @@ visitor's browser. The physics is checked against this package by a Node harness
 [web/README.md](web/README.md) for the architecture, and `tools/deploy_to_site.py`
 to re-sync it into the Jekyll site after a change.
 
+## Single-crystal patterns from any CIF (`single_crystal/`, `web/sc/`)
+
+A separate, self-contained package for the other kind of question: not "where
+does this reflection land on my detector" but "what does this structure's
+diffraction pattern look like". It reads any CIF and computes:
+
+- **reciprocal-lattice sections** — the undistorted plane a precession camera
+  records, named by a zone axis `[uvw]` and a layer `n`, so `[100]` layer 0 is
+  the *0kl* section, layer 3 the *3kl* one, and `[110]` or `[123]` are the
+  diagonal cuts;
+- **selected-area electron diffraction** — the same zone through a curved
+  Ewald sphere, with a `sinc²` relrod, so the higher-order Laue zones appear;
+- **powder patterns** — multiplicity summed by construction rather than looked
+  up from the Laue class.
+
+Each for **X-rays, neutrons or electrons**. Deuterium keeps its own neutron
+scattering length: `b(H)` is −3.739 fm and `b(D)` is +6.671 fm, opposite in
+sign, so folding D into H would invert its contribution.
+
+```bash
+python -m single_crystal structure.cif      # PyQt6 desktop viewer
+```
+```python
+from single_crystal import read_cif, Structure, compute_section
+xtal = Structure.from_cif(read_cif("rutile.cif"))   # symmetry expanded to P1
+sec = compute_section(xtal, uvw=(1, 1, 0), layer=0, radiation="neutron")
+```
+
+The browser build is `web/sc/`, deployed at `/diffraction/single-crystal/`. It
+shares the CIF reader and the reciprocal lattice with the Game of Diffraction
+next door, and the CIF you upload never leaves your machine.
+
+**Why this is a rewrite and not a port.** The obvious ancestor,
+`pytilt-diffraction`, sums only over the atoms *listed* in the CIF and never
+applies the symmetry operators, so any file giving an asymmetric unit comes out
+wrong while a spot check still passes. On rutile written as its 2-site
+asymmetric unit with 16 operators, ignoring the expansion puts (200) out by
++353%, (101) by +71% and (211) by −26%. Here the expansion happens in the
+reader, and the sum runs over the full P1 cell.
+
+Verified against **pymatgen** — an independent CIF reader, symmetry expansion
+and form factor table — to better than 0.2 on a 0-100 intensity scale on every
+bundled structure and on rutile (`python tests/test_single_crystal.py`). The
+JavaScript is held to the Python by `node web/test/parity_sc.mjs`, which agrees
+to ~1e-14 over 7008 section reflections, 124 SAED reflections and 3826 powder
+peaks.
+
 ## Real experimental frames (`realframe.py`)
 
 `xrays_on_detector.realframe` simulates and indexes real rotation-method frames
@@ -220,3 +267,14 @@ MIT, see [LICENSE](LICENSE). The bundled Cromer-Mann coefficients under
 `web/data/` were exported from `pytilting`'s tables; they are the published
 International Tables values, but check that provenance before redistributing
 them under a different licence.
+
+The neutron scattering lengths and electron scattering factors
+(`single_crystal/data/`, mirrored into `web/data/`) come from **pymatgen**,
+which is MIT-licensed like this project. `diffsims` ships a better electron
+table — the five-Gaussian Peng fit, which holds above s = 2 Å⁻¹ — but it is
+GPLv3, so its numbers are deliberately *not* vendored here. One entry, tin, was
+refitted: pymatgen's a₃ = 2.118 falls off the trend set by cadmium, indium and
+antimony, and made f_e(Sn) 10-14% low across the whole range while its
+neighbours agreed to 0.5%. `tools/export_scattering.py` detects that against
+the Mott-Bethe transform of the X-ray table, refits the coefficients, and
+refuses to write a table it cannot vouch for.
