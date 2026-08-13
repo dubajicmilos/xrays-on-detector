@@ -221,7 +221,10 @@ function simulate() {
   drawDetectorOverlay(det, table);
 
   const missLen = 1.55 * Math.max(st.distance, 60);
-  const rays = rayGeometry(det, refl, table, missLen);
+  const rays = rayGeometry(det, refl, table, missLen, {
+    log: st.log,
+    gain: st.gain,
+  });
   rays.block = blockedFlat
     ? blockedGeometry(blockedFlat, nBlocked, missLen * 0.5)
     : new Float32Array(0);

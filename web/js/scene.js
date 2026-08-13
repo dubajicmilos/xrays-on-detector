@@ -433,7 +433,7 @@ export class InstrumentScene {
     this.detGroup.add(this.detLabel);
 
     // -- ray bundles -------------------------------------------------------
-    this.rayHit = this._lineSegments(COL.ray, 0.95);
+    this.rayHit = this._lineSegments(COL.ray, 0.95, true);
     this.rayMiss = this._lineSegments(COL.miss, 0.5);
     this.rayBlock = this._lineSegments(COL.block, 0.6);
     this.directBeam = this._line(COL.beam, 0.3);
@@ -484,7 +484,7 @@ export class InstrumentScene {
     return m;
   }
 
-  _lineSegments(colour, opacity) {
+  _lineSegments(colour, opacity, additive = false) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute(
       "position",
@@ -496,6 +496,11 @@ export class InstrumentScene {
         color: colour,
         transparent: true,
         opacity,
+        // Light adds. It also means a ray whose colour has been faded to black
+        // contributes nothing at all, instead of painting a black line that is
+        // still visible against the panel.
+        blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+        depthWrite: !additive,
       }),
     );
     m.frustumCulled = false;
@@ -610,7 +615,7 @@ export class InstrumentScene {
       if (t > 0) this._setLine(this.directBeam, [0, 0, 0], [0, t, 0]);
     } else this.directBeam.visible = false;
 
-    this._setSegments(this.rayHit, st.rays.hit);
+    this._setSegments(this.rayHit, st.rays.hit, st.rays.hitColour);
     this._setSegments(this.rayMiss, st.show.missed ? st.rays.miss : null);
     this._setSegments(this.rayBlock, st.show.missed ? st.rays.block : null);
 
@@ -662,7 +667,7 @@ export class InstrumentScene {
     line.geometry.computeBoundingSphere();
   }
 
-  _setSegments(obj, data) {
+  _setSegments(obj, data, colours) {
     if (!data || data.length === 0) {
       obj.visible = false;
       return;
@@ -678,6 +683,26 @@ export class InstrumentScene {
     const a = obj.geometry.attributes.position;
     a.array.set(data);
     a.needsUpdate = true;
+
+    // Per-vertex colour rather than per-vertex alpha: LineBasicMaterial takes
+    // its opacity from the material, so brightness is carried in the colour
+    // itself, which reads the same way against this dark background.
+    if (colours) {
+      const existing = obj.geometry.attributes.color;
+      if (!existing || existing.array.length < colours.length) {
+        obj.geometry.setAttribute(
+          "color",
+          new THREE.BufferAttribute(new Float32Array(colours.length), 3),
+        );
+      }
+      const c = obj.geometry.attributes.color;
+      c.array.set(colours);
+      c.needsUpdate = true;
+      if (!obj.material.vertexColors) {
+        obj.material.vertexColors = true;
+        obj.material.needsUpdate = true;
+      }
+    }
     obj.geometry.setDrawRange(0, data.length / 3);
   }
 
