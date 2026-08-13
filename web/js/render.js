@@ -130,9 +130,25 @@ export function paint(
 }
 
 /** Ray endpoints for the 3D view, as flat pairs suitable for LineSegments. */
-export function rayGeometry(det, refl, table, missLength) {
+export function rayGeometry(
+  det,
+  refl,
+  table,
+  missLength,
+  { log = true, gain = 1, colour = [0.47, 0.9, 1.0] } = {},
+) {
   const { centre, eFast, eSlow } = det.frame();
   const hit = new Float32Array(table.length * 6);
+  // Per-ray brightness through the same stretch the detector image uses, so a
+  // reflection you can see on the panel has a ray you can see in the scene and
+  // one that is extinct has neither. Without this every ray is drawn alike, and
+  // a structure whose symmetry forbids half its reflections looks as though the
+  // renderer has lost them.
+  const hitColour = new Float32Array(table.length * 6);
+  let imax = 0;
+  for (const r of table) if (r.intensity > imax) imax = r.intensity;
+  const denom = log ? Math.log1p(gain * 500) : 1;
+
   table.forEach((r, n) => {
     const u = (r.fast - det.beamCenterFast) * det.pixelSize;
     const v = (r.slow - det.beamCenterSlow) * det.pixelSize;
@@ -143,6 +159,19 @@ export function rayGeometry(det, refl, table, missLength) {
     hit[o + 3] = centre[0] + u * eFast[0] + v * eSlow[0];
     hit[o + 4] = centre[1] + u * eFast[1] + v * eSlow[1];
     hit[o + 5] = centre[2] + u * eFast[2] + v * eSlow[2];
+
+    let w = 0;
+    if (imax > 0) {
+      w = log
+        ? Math.log1p((r.intensity * gain * 500) / imax) / denom
+        : Math.min(1, (r.intensity * gain) / imax);
+    }
+    w = Math.max(0, Math.min(1, w));
+    for (let e = 0; e < 2; e++) {
+      hitColour[o + 3 * e] = colour[0] * w;
+      hitColour[o + 3 * e + 1] = colour[1] * w;
+      hitColour[o + 3 * e + 2] = colour[2] * w;
+    }
   });
 
   const missPts = [];
@@ -158,7 +187,7 @@ export function rayGeometry(det, refl, table, missLength) {
       khat[2] * missLength,
     );
   }
-  return { hit, miss: Float32Array.from(missPts) };
+  return { hit, hitColour, miss: Float32Array.from(missPts) };
 }
 
 /** Blocked-ray endpoints (reflection geometry), shorter so they read as stopped. */
