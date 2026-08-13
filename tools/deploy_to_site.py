@@ -130,8 +130,8 @@ __BUTTON_CSS__---
   about a single axis rather than a bug, the page says so and offers a chi that
   brings it within range.
 - **Why there is a pattern at the start.** The crystal opens axis-aligned,
-  which is a zone axis, and the beam opens at 18.859 keV, where the wavelength
-  is exactly a/9 for the default 5.917 Å cell. Twelve reflections then sit
+  which is a zone axis, and the beam opens at 19.010 keV, where the wavelength
+  is exactly a/9 for the CsPbBr3 cell it starts on. Twelve reflections then sit
   exactly on the Ewald sphere. Detune the energy and they go out.
 
 ## Goniometer and detector circles
@@ -159,6 +159,12 @@ The simulator follows the six-circle convention of
 
 - **Structure.** Here you can select a crystallographic structure. Structure
   factors are available for the crystal lattices offered.
+- **Load CIF.** You can also read your own CIF straight in the browser: the
+  file never leaves your machine. The reader applies the symmetry operators the
+  file lists, so a normal database CIF giving only the asymmetric unit is
+  expanded to the full cell before any intensity is computed. A file it cannot
+  use safely is refused with the reason, rather than quietly giving you the
+  wrong intensities.
 - **Peak width** is the size of a Bragg peak in reciprocal space. Widening it
   keeps reflections lit further from the exact condition, which is what mosaic
   spread does to a real crystal.

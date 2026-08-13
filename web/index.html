@@ -101,8 +101,21 @@
           <h2>Sample</h2>
           <div class="row">
             <label>Structure</label
-            ><select id="structure"></select>
+            ><select id="structure" class="grow"></select>
           </div>
+          <div class="row">
+            <label>Your own</label>
+            <button id="cifPick" class="grow" title="Read a CIF in the browser">
+              Load CIF …
+            </button>
+            <input
+              type="file"
+              id="cifFile"
+              accept=".cif,chemical/x-cif"
+              hidden
+            />
+          </div>
+          <div class="readout hidden" id="cifStatus"></div>
           <div class="row">
             <label>Peak width</label
             ><input
