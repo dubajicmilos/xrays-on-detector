@@ -1,3 +1,5 @@
+/*! The Game of Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
+
 /**
  * Detector image rendering, ported from xrays_on_detector/render.py.
  *

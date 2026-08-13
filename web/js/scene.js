@@ -1,3 +1,5 @@
+/*! The Game of Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
+
 /**
  * Three.js scene for the six-circle diffractometer.
  *
@@ -13,6 +15,7 @@
 import * as THREE from "../lib/three.module.js";
 
 import { detectorMatrix, sampleMatrix } from "./physics.js";
+import { whiteboardTexture } from "./credit.js";
 
 const COL = {
   mu: 0xe85d75,
@@ -236,6 +239,12 @@ export class InstrumentScene {
     gizmo: 82,
     gizmoY: -55,
     gizmoZ: 178,
+    boardLen: 560,
+    boardHeight: 370,
+    boardThick: 14,
+    boardClear: 60,
+    boardMinZ: 240,
+    boardY: 20,
   };
 
   constructor(canvas) {
@@ -288,6 +297,54 @@ export class InstrumentScene {
     this.floor.material.transparent = true;
     this.floor.material.opacity = 0.45;
     this.scene.add(this.floor);
+
+    // -- whiteboard --------------------------------------------------------
+    // A lab whiteboard standing on the floor alongside the beam, carrying the
+    // equations, the credit and the two wanted posters. Its plane holds the
+    // beam direction and the vertical, so its face is normal to z: look across
+    // the beam and you read it. Fixed size, like the goniometer and the floor;
+    // only its z follows the detector, in _placeBoard.
+    //
+    // A BoxGeometry rather than a plane so it has thickness and reads as a
+    // plate from any angle. Local axes after the rotation below: local +x is
+    // -y in the lab (upstream), local +y is the lab vertical, local +z is lab
+    // +z. Material index 4 is that local +z face, which is the printed side
+    // and the one the opening camera looks at.
+    const board = new THREE.BoxGeometry(
+      D.boardLen,
+      D.boardHeight,
+      D.boardThick,
+    );
+    const edge = new THREE.MeshBasicMaterial({ color: 0x2b3348 });
+    this.boardTexture = new THREE.CanvasTexture(
+      // The posters arrive over the network, so the board is redrawn once they
+      // do and the texture pushed up again.
+      whiteboardTexture(D.boardLen, D.boardHeight, () => {
+        this.boardTexture.needsUpdate = true;
+        this.dirty = true;
+      }),
+    );
+    // Without this the canvas is taken as linear and converted on output, and
+    // the board comes out several stops brighter than the colours it was drawn
+    // with: a pale wall instead of dark anodised aluminium.
+    this.boardTexture.colorSpace = THREE.SRGBColorSpace;
+    this.boardTexture.anisotropy =
+      this.renderer.capabilities.getMaxAnisotropy();
+    this.board = new THREE.Mesh(board, [
+      edge,
+      edge,
+      edge,
+      edge,
+      new THREE.MeshBasicMaterial({ map: this.boardTexture }),
+      edge,
+    ]);
+    this.board.rotation.z = -Math.PI / 2;
+    this.board.position.set(
+      D.floorY + D.boardHeight / 2, // stands on the floor
+      D.boardY,
+      -D.boardMinZ, // replaced on the first update
+    );
+    this.scene.add(this.board);
 
     // -- goniometer hierarchy ---------------------------------------------
     this.gMu = new THREE.Group();
@@ -599,6 +656,7 @@ export class InstrumentScene {
 
     const w = st.detector.nFast * st.detector.pixelSize;
     const h = st.detector.nSlow * st.detector.pixelSize;
+    this._placeBoard(w);
     this.detFace.scale.set(w, h, 1);
     this.detCase.scale.set(w * 1.05, h * 1.05, 22);
     this.detCase.position.set(0, 0, -13);
@@ -658,6 +716,24 @@ export class InstrumentScene {
     this.gizmoCry.title.visible = vis.axes;
 
     this.dirty = true;
+  }
+
+  /**
+   * Stand the whiteboard just outside the detector's own edge in z.
+   *
+   * `panelWidth` is the panel's extent along eFast, which is the lab z at zero
+   * angles, so this is the detector's edge as asked for. It uses the panel's
+   * size and not its swung position: the board is bolted to the floor and has
+   * no business following delta and gamma around.
+   *
+   * The floor at boardMinZ keeps it behind the two axis gizmos, which sit at
+   * z = ±178. A small detector would otherwise put the board in front of the
+   * lab gizmo and hide it.
+   */
+  _placeBoard(panelWidth) {
+    const D = InstrumentScene.DIM;
+    const z = Math.max(panelWidth / 2 + D.boardClear, D.boardMinZ);
+    this.board.position.z = -z;
   }
 
   _setLine(line, a, b) {
