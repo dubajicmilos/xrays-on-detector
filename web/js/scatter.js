@@ -109,5 +109,7 @@ export function electronWavelength(kv) {
   const m = 9.1093837015e-31;
   const e = 1.602176634e-19;
   const c = 2.99792458e8;
-  return (h / Math.sqrt(2 * m * e * V * (1 + (e * V) / (2 * m * c * c)))) * 1e10;
+  return (
+    (h / Math.sqrt(2 * m * e * V * (1 + (e * V) / (2 * m * c * c)))) * 1e10
+  );
 }

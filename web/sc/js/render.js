@@ -8,7 +8,13 @@
  * an hkl without searching in screen space.
  */
 
-import { formatHkl, niceStep, sampleLut, spotRadius, stretch } from "./display.js";
+import {
+  formatHkl,
+  niceStep,
+  sampleLut,
+  spotRadius,
+  stretch,
+} from "./display.js";
 
 const DIM = "#8794b0";
 const LINE = "#2a3145";
@@ -195,14 +201,24 @@ export class PatternView {
     ]) {
       if (!g) continue;
       const v = [
-        structure.B[0][0] * g[0] + structure.B[0][1] * g[1] + structure.B[0][2] * g[2],
-        structure.B[1][0] * g[0] + structure.B[1][1] * g[1] + structure.B[1][2] * g[2],
-        structure.B[2][0] * g[0] + structure.B[2][1] * g[1] + structure.B[2][2] * g[2],
+        structure.B[0][0] * g[0] +
+          structure.B[0][1] * g[1] +
+          structure.B[0][2] * g[2],
+        structure.B[1][0] * g[0] +
+          structure.B[1][1] * g[1] +
+          structure.B[1][2] * g[2],
+        structure.B[2][0] * g[0] +
+          structure.B[2][1] * g[1] +
+          structure.B[2][2] * g[2],
       ];
       const gx =
-        v[0] * result.xAxis[0] + v[1] * result.xAxis[1] + v[2] * result.xAxis[2];
+        v[0] * result.xAxis[0] +
+        v[1] * result.xAxis[1] +
+        v[2] * result.xAxis[2];
       const gy =
-        v[0] * result.yAxis[0] + v[1] * result.yAxis[1] + v[2] * result.yAxis[2];
+        v[0] * result.yAxis[0] +
+        v[1] * result.yAxis[1] +
+        v[2] * result.yAxis[2];
       const n = Math.hypot(gx, gy);
       if (n < 1e-9) continue;
       const dx = (gx / n) * len;
@@ -335,7 +351,11 @@ export class PatternView {
       ctx.textBaseline = "bottom";
       for (let i = 0; i < p.count; i++) {
         if (p.intensity[i] < labelThreshold) continue;
-        ctx.fillText(formatHkl(p.hkl[i]), X(p.twoTheta[i]), Y(p.intensity[i]) - 3 * dpr);
+        ctx.fillText(
+          formatHkl(p.hkl[i]),
+          X(p.twoTheta[i]),
+          Y(p.intensity[i]) - 3 * dpr,
+        );
       }
     }
 

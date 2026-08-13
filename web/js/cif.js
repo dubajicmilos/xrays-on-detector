@@ -22,18 +22,41 @@ export class CifError extends Error {}
 
 const CENTRING = {
   P: [[0, 0, 0]],
-  I: [[0, 0, 0], [0.5, 0.5, 0.5]],
-  F: [[0, 0, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]],
-  A: [[0, 0, 0], [0, 0.5, 0.5]],
-  B: [[0, 0, 0], [0.5, 0, 0.5]],
-  C: [[0, 0, 0], [0.5, 0.5, 0]],
-  R: [[0, 0, 0], [2 / 3, 1 / 3, 1 / 3], [1 / 3, 2 / 3, 2 / 3]],
+  I: [
+    [0, 0, 0],
+    [0.5, 0.5, 0.5],
+  ],
+  F: [
+    [0, 0, 0],
+    [0, 0.5, 0.5],
+    [0.5, 0, 0.5],
+    [0.5, 0.5, 0],
+  ],
+  A: [
+    [0, 0, 0],
+    [0, 0.5, 0.5],
+  ],
+  B: [
+    [0, 0, 0],
+    [0.5, 0, 0.5],
+  ],
+  C: [
+    [0, 0, 0],
+    [0.5, 0.5, 0],
+  ],
+  R: [
+    [0, 0, 0],
+    [2 / 3, 1 / 3, 1 / 3],
+    [1 / 3, 2 / 3, 2 / 3],
+  ],
 };
 
 /** A CIF number: strip the estimated standard deviation, reject placeholders. */
 function num(token) {
   if (token === undefined || token === null) return null;
-  const t = String(token).trim().replace(/\((\d+)\)$/, "");
+  const t = String(token)
+    .trim()
+    .replace(/\((\d+)\)$/, "");
   if (t === "" || t === "?" || t === ".") return null;
   const v = Number(t);
   return Number.isFinite(v) ? v : null;
@@ -115,7 +138,9 @@ function parseBlocks(tokens) {
         i < tokens.length &&
         !isTag(tokens[i]) &&
         !isWord(tokens[i], "loop_") &&
-        !(!tokens[i].quoted && tokens[i].value.toLowerCase().startsWith("data_"))
+        !(
+          !tokens[i].quoted && tokens[i].value.toLowerCase().startsWith("data_")
+        )
       ) {
         row.push(tokens[i++].value);
         if (row.length === tags.length) {
@@ -154,7 +179,8 @@ function parseOperator(spec) {
       let mag = 1;
       if (m[2]) {
         const frac = m[2].split("/");
-        mag = frac.length === 2 ? Number(frac[0]) / Number(frac[1]) : Number(m[2]);
+        mag =
+          frac.length === 2 ? Number(frac[0]) / Number(frac[1]) : Number(m[2]);
         if (!Number.isFinite(mag))
           throw new CifError(`cannot read symmetry operator "${spec}"`);
       }
@@ -237,7 +263,13 @@ export function parseCif(text, name = "uploaded") {
     throw new CifError("the unit cell is missing or unreadable");
 
   // -- symmetry operators, from the file
-  let ops = [[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]];
+  let ops = [
+    [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+    ],
+  ];
   const symLoop = loops.find((L) =>
     L.tags.some((t) =>
       /_(space_group_symop_operation_xyz|symmetry_equiv_pos_as_xyz)$/.test(t),
@@ -255,11 +287,14 @@ export function parseCif(text, name = "uploaded") {
   // Hermann-Mauguin symbol are different questions: files name the space group
   // by its International Tables number too, which says nothing about centring
   // and is no use as a label, but does still assert a symmetry we must honour.
-  const raw = (items.get("_space_group_name_h-m_alt") ||
+  const raw = (
+    items.get("_space_group_name_h-m_alt") ||
     items.get("_symmetry_space_group_name_h-m") ||
-    "").replace(/\s+/g, "");
+    ""
+  ).replace(/\s+/g, "");
   const itNumber = num(
-    items.get("_space_group_it_number") || items.get("_symmetry_int_tables_number"),
+    items.get("_space_group_it_number") ||
+      items.get("_symmetry_int_tables_number"),
   );
   const symbol = /[A-Za-z]/.test(raw) ? raw : null;
   const claimsSymmetry =
@@ -274,11 +309,15 @@ export function parseCif(text, name = "uploaded") {
 
   // A file that lists operators lists all of them, centring included, so the
   // symbol is only consulted when there are none to go on.
-  const letter = symbol ? symbol.replace(/^[-+]/, "").charAt(0).toUpperCase() : "P";
+  const letter = symbol
+    ? symbol.replace(/^[-+]/, "").charAt(0).toUpperCase()
+    : "P";
   const centring = symLoop ? CENTRING.P : CENTRING[letter] || CENTRING.P;
 
   // -- atom sites
-  const atomLoop = loops.find((L) => L.tags.some((t) => /_atom_site_fract_x$/.test(t)));
+  const atomLoop = loops.find((L) =>
+    L.tags.some((t) => /_atom_site_fract_x$/.test(t)),
+  );
   if (!atomLoop)
     throw new CifError("no atom sites with fractional coordinates were found");
   const col = (re) => atomLoop.tags.findIndex((t) => re.test(t));
@@ -296,9 +335,14 @@ export function parseCif(text, name = "uploaded") {
   const sites = [];
   const unknown = new Set();
   for (const r of atomLoop.rows) {
-    const x = num(r[cx]), y = num(r[cy]), z = num(r[cz]);
+    const x = num(r[cx]),
+      y = num(r[cy]),
+      z = num(r[cz]);
     if (x === null || y === null || z === null) continue;
-    const sym = element(cType >= 0 ? r[cType] : null, cLabel >= 0 ? r[cLabel] : null);
+    const sym = element(
+      cType >= 0 ? r[cType] : null,
+      cLabel >= 0 ? r[cLabel] : null,
+    );
     if (!sym) {
       unknown.add((cType >= 0 ? r[cType] : r[cLabel]) || "?");
       continue;

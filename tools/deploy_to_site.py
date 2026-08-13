@@ -213,8 +213,8 @@ __BUTTON_CSS__---
 </div>
 
 Upload a CIF and look at its diffraction pattern. Choose any zone axis
-`[uvw]` and any layer, so `[100]` at layer 0 gives the *0kl* section and layer
-3 the *3kl* one, and `[110]` or `[123]` give the diagonal cuts. Switch between
+`[uvw]` and any layer, so `[100]` at layer 0 gives the _0kl_ section and layer
+3 the _3kl_ one, and `[110]` or `[123]` give the diagonal cuts. Switch between
 X-rays, neutrons and electrons, or between an undistorted reciprocal-lattice
 section, a selected-area electron pattern with its higher-order Laue zones,
 and a powder trace.
