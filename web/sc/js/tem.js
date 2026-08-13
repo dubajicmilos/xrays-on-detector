@@ -87,7 +87,10 @@ export function computeTem(
   const seen = new Set();
   const hkl = [];
   for (let layer = 0; layer <= maxZone; layer++) {
-    const origin = matVec(B, p.map((v) => v * layer));
+    const origin = matVec(
+      B,
+      p.map((v) => v * layer),
+    );
     const oIn = origin.map((v, i) => v - dot(origin, nHat) * nHat[i]);
     const R = qMax + norm(oIn);
     const aMax =
@@ -131,7 +134,9 @@ export function computeTem(
   const idx = Int32Array.from(hkl);
   const count = idx.length / 3;
   const q = new Float64Array(count);
-  const base = count ? structure.intensity(idx, "electron", q) : new Float64Array(0);
+  const base = count
+    ? structure.intensity(idx, "electron", q)
+    : new Float64Array(0);
 
   const x = new Float64Array(count);
   const y = new Float64Array(count);
@@ -147,7 +152,9 @@ export function computeTem(
     d[i] = TWO_PI / q[i];
     sg[i] = k - Math.hypot(...v.map((c, j) => c - k * nHat[j]));
     laueZone[i] =
-      idx[3 * i] * zone[0] + idx[3 * i + 1] * zone[1] + idx[3 * i + 2] * zone[2];
+      idx[3 * i] * zone[0] +
+      idx[3 * i + 1] * zone[1] +
+      idx[3 * i + 2] * zone[2];
     intensity[i] = base[i] * sinc(thickness * sg[i]) ** 2;
   }
 

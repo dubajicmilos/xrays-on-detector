@@ -168,7 +168,10 @@ export function computeSection(
 
   const e1 = matVec(B, g1);
   const e2 = matVec(B, g2);
-  const origin = matVec(B, p.map((v) => v * layer));
+  const origin = matVec(
+    B,
+    p.map((v) => v * layer),
+  );
   const oIn = origin.map((v, i) => v - dot(origin, nHat) * nHat[i]);
 
   // Solving the Gram system bounds the two in-plane indices exactly, rather

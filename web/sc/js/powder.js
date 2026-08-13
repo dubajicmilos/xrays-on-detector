@@ -98,7 +98,8 @@ export function computePowder(
 
   let top = 0;
   for (const v of intensity) if (v > top) top = v;
-  if (top > 0) for (let i = 0; i < intensity.length; i++) intensity[i] *= 100 / top;
+  if (top > 0)
+    for (let i = 0; i < intensity.length; i++) intensity[i] *= 100 / top;
 
   const x = new Float64Array(nPoints);
   const y = new Float64Array(nPoints);
@@ -111,7 +112,10 @@ export function computePowder(
     const I = intensity[i];
     if (I < 1e-6) continue;
     const lo = Math.max(0, Math.floor((twoTheta[i] - 4 * sigma) / step));
-    const hi = Math.min(nPoints - 1, Math.ceil((twoTheta[i] + 4 * sigma) / step));
+    const hi = Math.min(
+      nPoints - 1,
+      Math.ceil((twoTheta[i] + 4 * sigma) / step),
+    );
     for (let j = lo; j <= hi; j++)
       y[j] += I * Math.exp(-0.5 * ((x[j] - twoTheta[i]) / sigma) ** 2);
   }

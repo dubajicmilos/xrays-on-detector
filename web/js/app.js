@@ -594,7 +594,9 @@ function bindInputs() {
       const notes = [`${doc.atoms.length} atoms`];
       if (doc.spaceGroup) notes.push(doc.spaceGroup);
       if (doc.blocksInFile > 1)
-        notes.push(`${doc.blocksInFile} structures in the file, read ${doc.block}`);
+        notes.push(
+          `${doc.blocksInFile} structures in the file, read ${doc.block}`,
+        );
       say(`Loaded ${file.name}: ${notes.join(", ")}`, false);
       requestSim();
     } catch (err) {
