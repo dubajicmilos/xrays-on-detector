@@ -339,10 +339,12 @@ export class PatternView {
       }
     }
 
+    // Just under the tick labels, not at the foot of the canvas: the status
+    // line lives down there and the two collided.
     ctx.fillStyle = DIM;
     ctx.font = `${11 * dpr}px "Segoe UI", system-ui, sans-serif`;
     ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.fillText("2θ  (degrees)", padL + plotW / 2, h - 8 * dpr);
+    ctx.textBaseline = "top";
+    ctx.fillText("2θ  (degrees)", padL + plotW / 2, padT + plotH + 22 * dpr);
   }
 }
