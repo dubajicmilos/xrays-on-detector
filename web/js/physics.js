@@ -1,3 +1,5 @@
+/*! The Game of Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
+
 /**
  * Six-circle diffraction physics, ported from the xrays_on_detector Python
  * package (You 1999 convention, via diffcalc-core).
