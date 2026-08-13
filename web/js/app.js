@@ -7,6 +7,7 @@
  */
 import * as P from "./physics.js";
 import { blockedGeometry, paint, rayGeometry, renderFrame } from "./render.js";
+import { CifError, parseCif, setElements } from "./cif.js";
 import { InstrumentScene } from "./scene.js";
 
 const HC = 12.398419843320026; // keV.Angstrom
@@ -558,6 +559,51 @@ function bindInputs() {
     requestSim();
   });
 
+  // Reading a CIF here rather than shipping it: the file never leaves the
+  // machine, and the reader expands the symmetry, because the structure factor
+  // sum applies none of its own.
+  const status = $("cifStatus");
+  const say = (text, bad) => {
+    status.textContent = text;
+    status.classList.remove("hidden");
+    status.style.color = bad ? "var(--bad)" : "var(--good)";
+  };
+  $("cifPick").addEventListener("click", () => $("cifFile").click());
+  $("cifFile").addEventListener("change", async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    ev.target.value = ""; // so the same file can be loaded again
+    try {
+      const doc = parseCif(await file.text(), file.name.replace(/\.cif$/i, ""));
+      const clash = structures.findIndex((x) => x.name === doc.name);
+      if (clash >= 0) {
+        structures[clash] = doc;
+        sel.options[clash].textContent = structureLabel(doc);
+      } else {
+        structures.push(doc);
+        const o = document.createElement("option");
+        o.value = doc.name;
+        o.textContent = structureLabel(doc);
+        sel.appendChild(o);
+      }
+      sel.value = doc.name;
+      applyStructure(doc);
+      const notes = [`${doc.atoms.length} atoms`];
+      if (doc.spaceGroup) notes.push(doc.spaceGroup);
+      if (doc.blocksInFile > 1)
+        notes.push(`${doc.blocksInFile} structures in the file, read ${doc.block}`);
+      say(`Loaded ${file.name}: ${notes.join(", ")}`, false);
+      requestSim();
+    } catch (err) {
+      say(
+        err instanceof CifError
+          ? `Cannot use ${file.name}: ${err.message}`
+          : `Cannot read ${file.name}: ${err.message}`,
+        true,
+      );
+    }
+  });
+
   for (const r of document.querySelectorAll("input[name=mode]")) {
     r.addEventListener("change", () => {
       st.mode = r.value;
@@ -964,6 +1010,7 @@ async function boot() {
   const names = await grab("data/structures.json");
   structures = await Promise.all(names.map((n) => grab(`data/${n}.json`)));
 
+  setElements(Object.keys(tables));
   detCanvas = $("detCanvas");
   detCtx = detCanvas.getContext("2d");
   scene = new InstrumentScene($("view3d"));
