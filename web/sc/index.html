@@ -40,7 +40,8 @@
         <section class="grp">
           <h2>Structure</h2>
           <div class="row">
-            <label>Bundled</label><select id="structure"></select>
+            <label>Bundled</label
+            ><select id="structure"></select>
           </div>
           <button class="wide" id="uploadBtn">Upload a CIF…</button>
           <input type="file" id="cifFile" accept=".cif,.txt" hidden />
@@ -51,14 +52,16 @@
         <section class="grp">
           <h2>Simulate</h2>
           <div class="row">
-            <label>Pattern</label><select id="mode">
+            <label>Pattern</label
+            ><select id="mode">
               <option value="section">Reciprocal-lattice section</option>
               <option value="saed">Electron diffraction (SAED)</option>
               <option value="powder">Powder pattern</option>
             </select>
           </div>
           <div class="row">
-            <label>Radiation</label><select id="radiation">
+            <label>Radiation</label
+            ><select id="radiation">
               <option value="xray">X-rays</option>
               <option value="neutron">Neutrons</option>
               <option value="electron">Electrons</option>
@@ -93,12 +96,24 @@
           <h2>Beam</h2>
           <div class="row">
             <label>d min</label
-            ><input type="number" id="dmin" step="0.05" min="0.05" value="0.8" />
+            ><input
+              type="number"
+              id="dmin"
+              step="0.05"
+              min="0.05"
+              value="0.8"
+            />
             <span class="u">Å</span>
           </div>
           <div class="row" id="rowWavelength">
             <label>Wavelength</label
-            ><input type="number" id="wl" step="0.01" min="0.05" value="1.5406" />
+            ><input
+              type="number"
+              id="wl"
+              step="0.01"
+              min="0.05"
+              value="1.5406"
+            />
             <span class="u">Å</span>
           </div>
           <div class="row" id="rowKv">
@@ -113,12 +128,27 @@
           </div>
           <div class="row" id="rowZones">
             <label>Laue zones</label
-            ><input type="number" class="idx" id="zones" step="1" min="0" max="6" value="0" />
+            ><input
+              type="number"
+              class="idx"
+              id="zones"
+              step="1"
+              min="0"
+              max="6"
+              value="0"
+            />
             <span class="u" id="zoneRings"></span>
           </div>
           <div class="row" id="rowTtMax">
             <label>2θ max</label
-            ><input type="number" id="ttmax" step="5" min="0.5" max="179" value="120" />
+            ><input
+              type="number"
+              id="ttmax"
+              step="5"
+              min="0.5"
+              max="179"
+              value="120"
+            />
             <span class="u">°</span>
           </div>
         </section>
@@ -140,12 +170,19 @@
             <span class="u" id="labelThrLabel">35%</span>
           </div>
           <div class="checks">
-            <label><input type="checkbox" id="logScale" checked /> log intensity</label>
-            <label><input type="checkbox" id="showLabels" checked /> hkl labels</label>
+            <label
+              ><input type="checkbox" id="logScale" checked /> log
+              intensity</label
+            >
+            <label
+              ><input type="checkbox" id="showLabels" checked /> hkl
+              labels</label
+            >
             <label><input type="checkbox" id="showRings" /> Laue rings</label>
           </div>
           <div class="row">
-            <label>Colours</label><select id="colormap"></select>
+            <label>Colours</label
+            ><select id="colormap"></select>
           </div>
         </section>
 

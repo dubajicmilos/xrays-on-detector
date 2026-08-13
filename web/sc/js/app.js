@@ -158,7 +158,9 @@ function writeOverlay() {
     if (result.zoneFactor > 1)
       bits.push(`zone axis reduced by ${result.zoneFactor} to [${zone}]`);
     if (result.layer !== 0)
-      bits.push(`layer offset ${result.height.toFixed(3)} Å⁻¹ along the zone axis`);
+      bits.push(
+        `layer offset ${result.height.toFixed(3)} Å⁻¹ along the zone axis`,
+      );
     status.textContent = bits.join("   ·   ") || "hover a spot for its indices";
   } else {
     title.textContent =
@@ -216,7 +218,9 @@ async function onFile(file) {
     applyStructure(doc);
   } catch (err) {
     const msg =
-      err instanceof CifError ? err.message : `could not read this file: ${err.message}`;
+      err instanceof CifError
+        ? err.message
+        : `could not read this file: ${err.message}`;
     $("status").className = "bad";
     $("status").textContent = msg;
   }
@@ -265,9 +269,13 @@ function saveTable() {
   } else {
     L.push(`# zone axis      ${result.uvw.join(" ")}`);
     if (st.mode === "section")
-      L.push(`# layer          ${result.layer}   (${zoneLaw(result.uvw, result.layer)})`);
+      L.push(
+        `# layer          ${result.layer}   (${zoneLaw(result.uvw, result.layer)})`,
+      );
     else {
-      L.push(`# voltage        ${result.kv} kV, lambda ${result.wavelength.toFixed(6)} A`);
+      L.push(
+        `# voltage        ${result.kv} kV, lambda ${result.wavelength.toFixed(6)} A`,
+      );
       L.push(`# thickness      ${result.thickness} A`);
     }
     L.push(
@@ -292,7 +300,10 @@ function saveTable() {
       L.push(line);
     }
   }
-  download(stem() + ".txt", new Blob([L.join("\n") + "\n"], { type: "text/plain" }));
+  download(
+    stem() + ".txt",
+    new Blob([L.join("\n") + "\n"], { type: "text/plain" }),
+  );
 }
 
 // ---------------------------------------------------------------- binding
@@ -302,7 +313,10 @@ function syncRows() {
   show("grpZone", st.mode !== "powder");
   show("rowLayer", st.mode === "section");
   show("rowWavelength", st.mode === "powder" && st.radiation !== "electron");
-  show("rowKv", st.mode === "saed" || (st.mode === "powder" && st.radiation === "electron"));
+  show(
+    "rowKv",
+    st.mode === "saed" || (st.mode === "powder" && st.radiation === "electron"),
+  );
   show("rowThickness", st.mode === "saed");
   show("rowZones", st.mode === "saed");
   show("rowTtMax", st.mode === "powder");
@@ -394,7 +408,9 @@ function bind() {
   $("gain").addEventListener("input", () => {
     st.gain = Math.pow(10, $("gain").value / 10);
     $("gainLabel").textContent =
-      st.gain < 1000 ? `×${st.gain.toFixed(0)}` : `×1e${Math.log10(st.gain).toFixed(0)}`;
+      st.gain < 1000
+        ? `×${st.gain.toFixed(0)}`
+        : `×1e${Math.log10(st.gain).toFixed(0)}`;
     draw();
   });
   $("spotSize").addEventListener("input", () => {
@@ -451,7 +467,11 @@ function bind() {
       $("hover").textContent = "";
       return;
     }
-    const hkl = [result.hkl[3 * i], result.hkl[3 * i + 1], result.hkl[3 * i + 2]];
+    const hkl = [
+      result.hkl[3 * i],
+      result.hkl[3 * i + 1],
+      result.hkl[3 * i + 2],
+    ];
     const unit = UNITS[result.radiation || st.radiation];
     let text =
       `${formatHkl(hkl)}   (${hkl.join(" ")})\n` +
@@ -461,7 +481,10 @@ function bind() {
       text += `\ns_g ${result.sg[i].toFixed(5)} Å⁻¹   Laue zone ${result.laueZone[i]}`;
     $("hover").textContent = text;
   });
-  $("pattern").addEventListener("mouseleave", () => ($("hover").textContent = ""));
+  $("pattern").addEventListener(
+    "mouseleave",
+    () => ($("hover").textContent = ""),
+  );
 
   new ResizeObserver(() => draw()).observe($("stage"));
 }

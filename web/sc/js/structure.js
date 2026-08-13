@@ -69,7 +69,8 @@ export class Structure {
       const symbols = this.symbolsFor(radiation);
       const uniq = [...new Set(symbols)];
       const index = new Int32Array(symbols.length);
-      for (let i = 0; i < symbols.length; i++) index[i] = uniq.indexOf(symbols[i]);
+      for (let i = 0; i < symbols.length; i++)
+        index[i] = uniq.indexOf(symbols[i]);
       got = { uniq, index };
       this._byRadiation.set(radiation, got);
     }
