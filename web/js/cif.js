@@ -1,3 +1,5 @@
+/*! The Game of Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
+
 /**
  * CIF reader for the browser: cell, symmetry, atoms, expanded to P1.
  *
@@ -171,7 +173,14 @@ export function setElements(symbols) {
   for (const s of symbols) ELEMENTS.add(s);
 }
 
-/** "Pb2+", "Cs1", "D" -> a symbol our form factor table knows. */
+/**
+ * "Pb2+", "Cs1", "D" -> the symbols our tables know, as {element, nuclide}.
+ *
+ * They differ only for deuterium and tritium, and only because the radiation
+ * cares: those isotopes scatter x-rays and electrons exactly as hydrogen does,
+ * so `element` folds them in, while b_c(H) is -3.739 fm against b_c(D) of
+ * +6.671 fm, opposite in sign, so `nuclide` keeps them apart for neutrons.
+ */
 function element(typeSymbol, label) {
   for (const raw of [typeSymbol, label]) {
     if (!raw) continue;
@@ -180,10 +189,9 @@ function element(typeSymbol, label) {
     const two = letters.slice(0, 2);
     const cap2 = two.charAt(0).toUpperCase() + two.slice(1).toLowerCase();
     const cap1 = letters.charAt(0).toUpperCase();
-    if (ELEMENTS.has(cap2)) return cap2;
-    if (ELEMENTS.has(cap1)) return cap1;
-    // deuterium and tritium scatter x-rays exactly as hydrogen does
-    if (cap1 === "D" || cap1 === "T") return "H";
+    if (ELEMENTS.has(cap2)) return { element: cap2, nuclide: cap2 };
+    if (ELEMENTS.has(cap1)) return { element: cap1, nuclide: cap1 };
+    if (cap1 === "D" || cap1 === "T") return { element: "H", nuclide: cap1 };
   }
   return null;
 }
@@ -290,18 +298,27 @@ export function parseCif(text, name = "uploaded") {
   for (const r of atomLoop.rows) {
     const x = num(r[cx]), y = num(r[cy]), z = num(r[cz]);
     if (x === null || y === null || z === null) continue;
-    const el = element(cType >= 0 ? r[cType] : null, cLabel >= 0 ? r[cLabel] : null);
-    if (!el) {
+    const sym = element(cType >= 0 ? r[cType] : null, cLabel >= 0 ? r[cLabel] : null);
+    if (!sym) {
       unknown.add((cType >= 0 ? r[cType] : r[cLabel]) || "?");
       continue;
     }
+    const el = sym.element;
     const occ = cOcc >= 0 ? num(r[cOcc]) : null;
     let B = cB >= 0 ? num(r[cB]) : null;
     if (B === null && cU >= 0) {
       const U = num(r[cU]);
       if (U !== null) B = 8 * Math.PI * Math.PI * U;
     }
-    sites.push({ el, x, y, z, occ: occ === null ? 1 : occ, B: B === null ? 0 : B });
+    sites.push({
+      el,
+      nuc: sym.nuclide,
+      x,
+      y,
+      z,
+      occ: occ === null ? 1 : occ,
+      B: B === null ? 0 : B,
+    });
   }
   if (unknown.size)
     throw new CifError(
@@ -332,8 +349,10 @@ export function parseCif(text, name = "uploaded") {
   const atoms = [];
   const byElement = new Map();
   for (const s of sites) {
-    const kept = byElement.get(s.el) || [];
-    byElement.set(s.el, kept);
+    // Keyed by nuclide, not element, so an H site and a D site at the same
+    // position stay the two distinct scatterers they are for neutrons.
+    const kept = byElement.get(s.nuc) || [];
+    byElement.set(s.nuc, kept);
     for (const op of ops) {
       for (const t of centring) {
         const p = [0, 1, 2].map((i) => {
@@ -344,11 +363,16 @@ export function parseCif(text, name = "uploaded") {
         });
         if (kept.some((q) => near(p, q))) continue;
         kept.push(p);
+        // Full precision. Rounding to six decimals costs nothing on a
+        // coordinate like 0.25 and 3e-7 on a hexagonal 1/3, which is enough to
+        // move |F|^2 by 1e-5 relative -- invisible on screen, but a needless
+        // disagreement with any other code.
         atoms.push({
           element: s.el,
-          x: +p[0].toFixed(6),
-          y: +p[1].toFixed(6),
-          z: +p[2].toFixed(6),
+          nuclide: s.nuc,
+          x: p[0],
+          y: p[1],
+          z: p[2],
           occ: s.occ,
           B: s.B,
         });

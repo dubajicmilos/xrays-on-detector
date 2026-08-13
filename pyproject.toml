@@ -25,8 +25,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The PyQt6 virtual diffractometer (python -m xrays_on_detector.vdiff).
+# The PyQt6 virtual diffractometer (python -m xrays_on_detector.vdiff) and the
+# single-crystal CIF viewer (python -m single_crystal). The viewer itself needs
+# only numpy; these are what put it on screen.
 vdiff = ["PyQt6>=6.5", "matplotlib>=3.7", "scipy>=1.10"]
+singlecrystal = ["PyQt6>=6.5", "matplotlib>=3.7"]
 # Reading real frames and writing reconstructed volumes.
 data = ["fabio>=2023.1", "h5py>=3.8", "scipy>=1.10"]
 # Structure factors from a CIF. ASE expands the symmetry; |F(hkl)| itself comes
@@ -40,4 +43,9 @@ Homepage = "https://dubajicmilos.github.io/diffraction/"
 Source = "https://github.com/dubajicmilos/xrays-on-detector"
 
 [tool.setuptools.packages.find]
-include = ["xrays_on_detector*"]
+include = ["xrays_on_detector*", "single_crystal*"]
+
+# The scattering tables are generated (tools/export_scattering.py) rather than
+# written by hand, but the package cannot compute anything without them.
+[tool.setuptools.package-data]
+single_crystal = ["data/*.json"]
