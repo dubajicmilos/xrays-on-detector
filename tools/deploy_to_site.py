@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import filecmp
 import os
+import re
 import shutil
 import sys
 
@@ -193,7 +194,7 @@ layout: page
 permalink: /diffraction/single-crystal/
 title: Single-Crystal Diffraction
 nav: false
-description: Kinematic diffraction from any CIF you upload: reciprocal-lattice sections down any zone axis, electron diffraction and powder patterns, for X-rays, neutrons and electrons.
+description: Kinematic diffraction from any CIF you upload. Reciprocal-lattice sections down any zone axis, electron diffraction and powder patterns, for X-rays, neutrons and electrons.
 _styles: >
   .game-shell {
     width: 100vw;
@@ -239,6 +240,47 @@ leaves your machine: the CIF is read in the browser.</p>
 PAGE = PAGE.replace("__BUTTON_CSS__", BUTTON_CSS)
 GUIDE = GUIDE.replace("__BUTTON_CSS__", BUTTON_CSS)
 SINGLE = SINGLE.replace("__BUTTON_CSS__", BUTTON_CSS)
+
+
+def check_front_matter(name, text):
+    """Refuse to write a page whose YAML front matter will not parse.
+
+    Jekyll does not complain: it just does not build the page, and the link
+    that points at it 404s while every other page is fine. That cost a live
+    deploy once, over a colon in a description ("from any CIF you upload:
+    reciprocal-lattice sections ..."), which YAML reads as a nested mapping.
+
+    PyYAML is used when it is there and a narrower check when it is not, so
+    the script keeps working without it.
+    """
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        raise SystemExit(f"{name}: no front matter")
+    fm = parts[1]
+    try:
+        import yaml
+    except ImportError:
+        for line in fm.splitlines():
+            m = re.match(r"^([A-Za-z_][\w-]*):\s+(.*)$", line)
+            if not m:
+                continue
+            value = m.group(2).strip()
+            if value[:1] in "\"'>|" or not value:
+                continue
+            if ": " in value:
+                raise SystemExit(
+                    f'{name}: "{m.group(1)}" contains ": ", which YAML reads as a '
+                    "nested mapping. Quote it or reword it, or Jekyll will skip "
+                    "the page and its link will 404."
+                )
+        return
+    try:
+        yaml.safe_load(fm)
+    except Exception as exc:
+        raise SystemExit(
+            f"{name}: the front matter is not valid YAML, so Jekyll would skip "
+            f"the page and its link would 404.\n  {exc}"
+        ) from exc
 
 
 def _fix_case(dst):
@@ -325,6 +367,7 @@ def main():
              ("diffraction-guide.md", GUIDE),
              ("diffraction-single-crystal.md", SINGLE)]
     for name, text in pages:
+        check_front_matter(name, text)
         page_path = os.path.join(site, "_pages", name)
         old = (open(page_path, encoding="utf-8").read()
                if os.path.exists(page_path) else None)
