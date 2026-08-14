@@ -170,10 +170,7 @@
             <span class="u" id="labelThrLabel">35%</span>
           </div>
           <div class="checks">
-            <label
-              ><input type="checkbox" id="logScale" checked /> log
-              intensity</label
-            >
+            <label><input type="checkbox" id="logScale" /> log intensity</label>
             <label
               ><input type="checkbox" id="showLabels" checked /> hkl
               labels</label
@@ -198,6 +195,12 @@
         <div id="overlay">
           <div id="title"></div>
           <div id="hover"></div>
+        </div>
+        <div id="patZoom">
+          <button id="zoomOut" title="zoom out">−</button>
+          <span id="zoomLabel">100%</span>
+          <button id="zoomIn" title="zoom in">+</button>
+          <button id="zoomFit" title="fit to pane">fit</button>
         </div>
         <div id="status"></div>
         <button id="panelToggle">☰</button>
