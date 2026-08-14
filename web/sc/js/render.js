@@ -69,13 +69,58 @@ export class PatternView {
       ctx.fillText(line, w / 2, h / 2 + (i - 0.5) * 20 * this.dpr);
   }
 
-  /** Reciprocal-space coordinates -> device pixels. */
+  /**
+   * Reciprocal-space coordinates -> device pixels.
+   *
+   * `scale` is the fit, recomputed from the extent of the data on every draw;
+   * `zoom` multiplies it and `pan` is a straight offset in device pixels. Pan
+   * deliberately sits outside the zoom so a drag moves the picture by exactly
+   * the distance the pointer moved, whatever the magnification.
+   */
   toScreen(x, y) {
     return [
-      this.cx + (x * this.scale + this.panX) * this.zoom,
+      this.cx + x * this.scale * this.zoom + this.panX,
       // y up on screen, as reciprocal space is drawn everywhere else
-      this.cy - (y * this.scale - this.panY) * this.zoom,
+      this.cy - y * this.scale * this.zoom + this.panY,
     ];
+  }
+
+  /** Magnify about a point in client coordinates, keeping it under the cursor. */
+  zoomAt(clientX, clientY, factor, lo = 0.25, hi = 60) {
+    const before = this.zoom;
+    const next = Math.min(hi, Math.max(lo, before * factor));
+    if (next === before) return false;
+    const box = this.canvas.getBoundingClientRect();
+    const px = (clientX - box.left) * this.dpr;
+    const py = (clientY - box.top) * this.dpr;
+    // Solve for the pan that leaves the world point under the cursor fixed.
+    const k = next / before;
+    this.panX = px - this.cx - (px - this.cx - this.panX) * k;
+    this.panY = py - this.cy - (py - this.cy - this.panY) * k;
+    this.zoom = next;
+    return true;
+  }
+
+  /** Magnify about the middle of the pane, for the +/- buttons. */
+  zoomCentre(factor) {
+    const box = this.canvas.getBoundingClientRect();
+    return this.zoomAt(
+      box.left + box.width / 2,
+      box.top + box.height / 2,
+      factor,
+    );
+  }
+
+  panBy(dx, dy) {
+    this.panX += dx * this.dpr;
+    this.panY += dy * this.dpr;
+  }
+
+  /** Back to the fit that the data extent implies. */
+  resetView() {
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
   }
 
   /**
@@ -195,6 +240,9 @@ export class PatternView {
     const oy = h - 54 * dpr;
     const len = 30 * dpr;
 
+    ctx.fillStyle = "rgba(9,11,18,0.72)";
+    ctx.fillRect(ox - 44 * dpr, oy - 52 * dpr, 104 * dpr, 66 * dpr);
+
     for (const [g, colour] of [
       [result.g1, ACCENT],
       [result.g2, GOOD],
@@ -249,10 +297,17 @@ export class PatternView {
       ctx.fillText(formatHkl(g), ox + dx * 1.42, oy + dy * 1.42);
     }
 
-    const step = niceStep(2 * lim);
+    // Sized from what is on screen, not from the extent of the data, so the
+    // bar stays about a sixth of the pane instead of growing with the zoom
+    // until it runs the whole width.
+    const step = niceStep(w / (this.scale * this.zoom));
     const px = step * this.scale * this.zoom;
     const x0 = w - 24 * dpr - px;
     const y0 = h - 30 * dpr;
+    // Both overlays sit on top of the pattern, so they get a backing panel;
+    // at high zoom the spots run underneath them and the bar was unreadable.
+    ctx.fillStyle = "rgba(9,11,18,0.72)";
+    ctx.fillRect(x0 - 10 * dpr, y0 - 22 * dpr, px + 20 * dpr, 32 * dpr);
     ctx.strokeStyle = DIM;
     ctx.fillStyle = DIM;
     ctx.lineWidth = 1.4 * dpr;
