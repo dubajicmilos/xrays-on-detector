@@ -69,6 +69,46 @@
   color: var(--bad);
 }
 
+/* Zoom control, laid out like the detector pane's in the Game of Diffraction
+   so the two apps are driven the same way. */
+#patZoom {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #0d1220cc;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 5px;
+  backdrop-filter: blur(3px);
+}
+#patZoom button {
+  padding: 1px 7px;
+  min-width: 24px;
+}
+#zoomLabel {
+  font:
+    10.5px Consolas,
+    ui-monospace,
+    monospace;
+  color: var(--dim);
+  min-width: 42px;
+  text-align: center;
+}
+#patZoom.hidden {
+  display: none;
+}
+
+#pattern {
+  cursor: grab;
+  touch-action: none;
+}
+#pattern.dragging {
+  cursor: grabbing;
+}
+
 .quickzone {
   display: flex;
   gap: 4px;

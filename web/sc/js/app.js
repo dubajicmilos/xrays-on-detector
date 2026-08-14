@@ -48,7 +48,10 @@ const st = {
   zones: 0,
   ttMax: 120,
   gain: 1,
-  log: true,
+  // Linear by default. A log stretch spreads six decades and lights up every
+  // extinct-but-not-quite reflection, which reads as noise until you know to
+  // expect it; linear shows the pattern a diffractometer would.
+  log: false,
   labels: true,
   rings: false,
   labelThr: 0.35,
@@ -161,7 +164,10 @@ function writeOverlay() {
       bits.push(
         `layer offset ${result.height.toFixed(3)} Å⁻¹ along the zone axis`,
       );
-    status.textContent = bits.join("   ·   ") || "hover a spot for its indices";
+    status.textContent =
+      bits.join("   ·   ") ||
+      "hover a spot for its indices   ·   wheel to zoom, drag to pan, " +
+        "double-click to fit";
   } else {
     title.textContent =
       `${structure.name}   Electrons\n` +
@@ -185,6 +191,13 @@ function writeOverlay() {
 // ------------------------------------------------------------ structures
 
 function applyStructure(doc) {
+  // A different structure is a different picture, so the magnification from
+  // the last one would leave you looking at empty space. Changing the zone or
+  // the layer keeps it, which is what you want while comparing sections.
+  if (view) {
+    view.resetView();
+    showZoom();
+  }
   try {
     structure = new Structure(doc);
   } catch (err) {
@@ -308,6 +321,84 @@ function saveTable() {
 
 // ---------------------------------------------------------------- binding
 
+/** Set while a pan is in progress, so hover does not fight the drag. */
+let drag = null;
+
+function showZoom() {
+  $("zoomLabel").textContent = `${Math.round(view.zoom * 100)}%`;
+  // A powder trace has its own axes; magnifying it would only stretch a plot.
+  $("patZoom").classList.toggle("hidden", st.mode === "powder");
+}
+
+/**
+ * Wheel to magnify about the pointer, drag to pan, and the usual three
+ * buttons. The transform lives on the view, so a redraw after a zone change
+ * keeps whatever magnification you were looking at.
+ */
+function bindZoom() {
+  const canvas = $("pattern");
+
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      if (!result || st.mode === "powder") return;
+      e.preventDefault();
+      // Normalise the notch: trackpads report pixels, wheels report lines.
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+      if (
+        view.zoomAt(e.clientX, e.clientY, Math.exp((-e.deltaY * unit) / 420))
+      ) {
+        draw();
+        showZoom();
+      }
+    },
+    { passive: false },
+  );
+
+  canvas.addEventListener("pointerdown", (e) => {
+    if (!result || st.mode === "powder" || e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY };
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add("dragging");
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    view.panBy(e.clientX - drag.x, e.clientY - drag.y);
+    drag = { x: e.clientX, y: e.clientY };
+    draw();
+  });
+  const endDrag = (e) => {
+    if (!drag) return;
+    drag = null;
+    canvas.classList.remove("dragging");
+    if (e.pointerId !== undefined && canvas.hasPointerCapture(e.pointerId))
+      canvas.releasePointerCapture(e.pointerId);
+  };
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
+
+  const step = (f) => () => {
+    if (view.zoomCentre(f)) {
+      draw();
+      showZoom();
+    }
+  };
+  $("zoomIn").addEventListener("click", step(1.35));
+  $("zoomOut").addEventListener("click", step(1 / 1.35));
+  $("zoomFit").addEventListener("click", () => {
+    view.resetView();
+    draw();
+    showZoom();
+  });
+  // Double-click is the quick way back, as it is in most viewers.
+  canvas.addEventListener("dblclick", () => {
+    view.resetView();
+    draw();
+    showZoom();
+  });
+  showZoom();
+}
+
 function syncRows() {
   const show = (id, on) => $(id).classList.toggle("hidden", !on);
   show("grpZone", st.mode !== "powder");
@@ -321,6 +412,7 @@ function syncRows() {
   show("rowZones", st.mode === "saed");
   show("rowTtMax", st.mode === "powder");
   $("radiation").disabled = st.mode === "saed";
+  if (view) showZoom();
   $("modeNote").textContent =
     st.mode === "saed"
       ? "SAED is electron diffraction by definition, so the radiation is fixed."
@@ -460,8 +552,10 @@ function bind() {
     $("panel").classList.toggle("open"),
   );
 
+  bindZoom();
+
   $("pattern").addEventListener("mousemove", (e) => {
-    if (!result || st.mode === "powder") return;
+    if (!result || st.mode === "powder" || drag) return;
     const i = view.pick(e.clientX, e.clientY);
     if (i === null) {
       $("hover").textContent = "";
@@ -539,6 +633,9 @@ async function boot() {
   // script the app from the console.
   window.singleCrystal = {
     state: st,
+    get view() {
+      return view;
+    },
     get structure() {
       return structure;
     },
