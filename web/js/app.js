@@ -487,12 +487,31 @@ function tick() {
 // ---------------------------------------------------------------- wiring
 
 function bindInputs() {
+  /**
+   * The min and max a number input already carries, as numbers.
+   *
+   * The browser enforces them for form validation and not for typing, so a
+   * field can hold a value its own attributes forbid. Reading them here makes
+   * one guard serve every box rather than repeating a range per handler.
+   */
+  const limitsOf = (el) => [
+    el.min === "" ? -Infinity : parseFloat(el.min),
+    el.max === "" ? Infinity : parseFloat(el.max),
+  ];
+
   const num = (id, key, after) => {
     const el = $(id);
     el.value = st[key];
     el.addEventListener("input", () => {
       const v = parseFloat(el.value);
-      if (!Number.isFinite(v)) return;
+      const [lo, hi] = limitsOf(el);
+      // A half-typed number is not an error and must simply be ignored until
+      // it is finished. Letting one through is: clearing the wavelength box
+      // and typing gives a moment at zero, where k = 2*pi/lambda is infinite,
+      // the limiting sphere has no bound, and hklWithinQmax tries to enumerate
+      // every integer triple. That crashes the tab rather than drawing
+      // nothing, so the range is checked and not merely the finiteness.
+      if (!Number.isFinite(v) || v < lo || v > hi) return;
       st[key] = v;
       if (after) after();
       requestSim();
@@ -508,8 +527,10 @@ function bindInputs() {
   $("wl").value = st.wavelength.toFixed(4);
   $("energy").value = (HC / st.wavelength).toFixed(3);
   $("energy").addEventListener("input", () => {
-    const e = parseFloat($("energy").value);
-    if (!Number.isFinite(e) || e <= 0) return;
+    const el = $("energy");
+    const e = parseFloat(el.value);
+    const [lo, hi] = limitsOf(el);
+    if (!Number.isFinite(e) || e < lo || e > hi) return;
     st.wavelength = HC / e;
     $("wl").value = st.wavelength.toFixed(4);
     needRebuild = true;
