@@ -5,8 +5,10 @@ __pycache__/
 .venv/
 venv/
 
-# Development scratch: render captures from tools/devserver.py
+# Development scratch: render captures from tools/devserver.py and the
+# recordings tools/record_tutorial.py makes before they are published
 tools/_shots/
+tools/_video/
 
 # Private reference material. Screenshots of a commercial application and
 # other images kept locally as a design reference. These are not ours to
