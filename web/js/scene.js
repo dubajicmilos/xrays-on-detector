@@ -673,7 +673,16 @@ export class InstrumentScene {
       if (t > 0) this._setLine(this.directBeam, [0, 0, 0], [0, t, 0]);
     } else this.directBeam.visible = false;
 
-    this._setSegments(this.rayHit, st.rays.hit, st.rays.hitColour);
+    // The Rays toggle is applied here, not by setting .visible afterwards:
+    // _setSegments already hides a bundle whose data is empty, and a later
+    // assignment to .visible undid that. Swinging the detector clear of every
+    // reflection then left the previous frame's rays on screen, drawn in the
+    // hit colour with nothing to hit.
+    this._setSegments(
+      this.rayHit,
+      st.show.rays ? st.rays.hit : null,
+      st.rays.hitColour,
+    );
     this._setSegments(this.rayMiss, st.show.missed ? st.rays.miss : null);
     this._setSegments(this.rayBlock, st.show.missed ? st.rays.block : null);
 
@@ -710,7 +719,6 @@ export class InstrumentScene {
     for (const k of Object.keys(this.ringLabels))
       this.ringLabels[k].visible = vis.rings;
     this.floor.visible = vis.floor;
-    this.rayHit.visible = vis.rays;
     this.gizmoCry.group.visible = vis.axes;
     this.gizmoCry.title.visible = vis.axes;
     this.gizmoCry.title.visible = vis.axes;
@@ -746,6 +754,9 @@ export class InstrumentScene {
   _setSegments(obj, data, colours) {
     if (!data || data.length === 0) {
       obj.visible = false;
+      // Empty means empty: drop the draw range too, so whatever is still in the
+      // buffer from the last frame cannot come back if the object is shown.
+      obj.geometry.setDrawRange(0, 0);
       return;
     }
     obj.visible = true;
