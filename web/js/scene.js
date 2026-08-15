@@ -721,7 +721,6 @@ export class InstrumentScene {
     this.floor.visible = vis.floor;
     this.gizmoCry.group.visible = vis.axes;
     this.gizmoCry.title.visible = vis.axes;
-    this.gizmoCry.title.visible = vis.axes;
 
     this.dirty = true;
   }
