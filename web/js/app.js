@@ -71,6 +71,7 @@ const st = {
   B: null,
   hkl: null,
   F2: null,
+  builtQmax: 0, // the bound hkl was enumerated to; see rebuildReflections
   cmap: "inferno",
   log: true,
   gain: 1, // display contrast; see the note on the slider below
@@ -98,26 +99,46 @@ let chiTarget = null;
 
 // ---------------------------------------------------------------- helpers
 
-function detector(bin = st.bin) {
+function detector(bin = st.bin, angles = st.angles) {
   return new P.Detector({
     distance: st.distance,
     nFast: st.nFast,
     nSlow: st.nSlow,
     pixelSize: st.pixelSize,
-    nu: st.angles.gamma,
-    delta: st.angles.delta,
+    nu: angles.gamma,
+    delta: angles.delta,
   }).binned(bin);
 }
 
-function rebuildReflections() {
+/** The largest |Q| the panel corners reach with the arm at `angles`. */
+const qmaxAt = (angles = st.angles) =>
+  detector(1, angles).maxQmax(st.wavelength);
+
+function rebuildReflections(qmax = qmaxAt()) {
   st.B = P.bMatrix(...st.cell);
-  const qmax = detector(1).maxQmax(st.wavelength);
+  st.builtQmax = qmax;
   st.hkl = P.hklWithinQmax(st.B, qmax);
   st.F2 = st.atoms
     ? P.structureFactors(tables, st.atoms, st.B, st.hkl)
     : P.latticeStructureFactors(st.B, st.hkl);
   needRebuild = false;
   return qmax;
+}
+
+/**
+ * Extend the list to `qmax` if the arm has walked past what it holds.
+ *
+ * Enumerating hkl costs the cube of the bound, so a list rebuilt to exactly
+ * what the arm needs is re-enumerated on nearly every frame of a delta drag.
+ * Reaching a little past the requirement makes that occasional instead. The
+ * margin is only spent where the arm has actually gone: a rebuild from a
+ * change of wavelength, cell or detector geometry goes back to the panel's own
+ * reach.
+ */
+const QMAX_MARGIN = 1.15;
+
+function growReflections(qmax) {
+  if (qmax > st.builtQmax) rebuildReflections(qmax * QMAX_MARGIN);
 }
 
 // A CIF that says P 1 asserts nothing, so those structures show no symbol at
@@ -164,7 +185,14 @@ function requestSim() {
 // ---------------------------------------------------------------- simulate
 
 function simulate() {
+  // The list reaches out to the Q the panel corners reach, and that depends on
+  // where the arm is standing: swinging delta and gamma out moves the window
+  // to higher Q. Rebuilding on a geometry change alone left a far detector
+  // driven to a peak reading a list that stops short of it, so the frame came
+  // up blank until an unrelated edit happened to rebuild it. The list follows
+  // the arm out and is only cut back by a real geometry change.
   if (needRebuild || !st.hkl) rebuildReflections();
+  else growReflections(qmaxAt());
 
   const det = detector();
   const { mu, eta, chi, phi } = st.angles;
@@ -282,7 +310,9 @@ function subset(r, idx) {
 // ---------------------------------------------------------------- readouts
 
 function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
-  const qmax = detector(1).maxQmax(st.wavelength);
+  // d_min goes with the count beside it, so both describe the list rather than
+  // one describing the list and the other the panel.
+  const qmax = st.builtQmax;
   $("detInfo").textContent =
     `${det.nFast}×${det.nSlow} px (${(det.pixelSize * 1000).toFixed(0)} µm bins)   ` +
     `${st.hkl.length / 3} hkl in range   d_min ${((2 * Math.PI) / qmax).toFixed(3)} Å   ` +
@@ -358,6 +388,29 @@ function drawDetectorOverlay(det, table) {
 
 // ---------------------------------------------------------------- controls
 
+/**
+ * Let a number box be typed into without writing over what is in it.
+ *
+ * `apply` takes each finished value and `settled` gives the value the box is
+ * squared up with once the edit is committed. A number input reports an empty
+ * value while it holds "-" or "0.", which is what a minus sign and a decimal
+ * point look like on the way in, so a handler that echoed a rounded number
+ * back into the box rubbed the character out as it was typed: no negative or
+ * fractional angle could be entered at all. Half-typed and out-of-range values
+ * are ignored here, as they are in the beam and detector boxes, and nothing is
+ * written to the box until it loses focus.
+ */
+function bindTypedNumber(el, lo, hi, apply, settled) {
+  el.addEventListener("input", () => {
+    const v = parseFloat(el.value);
+    if (!Number.isFinite(v) || v < lo || v > hi) return;
+    apply(v);
+  });
+  el.addEventListener("change", () => {
+    el.value = settled();
+  });
+}
+
 function buildMotorRows() {
   const host = $("motorRows");
   for (const [name, label, lo, hi, colour] of MOTORS) {
@@ -373,10 +426,10 @@ function buildMotorRows() {
       row.children[2],
       row.children[3],
     ];
-    const set = (v, silent) => {
+    const set = (v, silent, keepBox) => {
       v = Math.max(lo, Math.min(hi, v));
       range.value = v;
-      num.value = Number(v.toFixed(2));
+      if (!keepBox) num.value = Number(v.toFixed(2));
       st.angles[name] = v;
       if (!silent) requestSim();
     };
@@ -384,10 +437,16 @@ function buildMotorRows() {
       stopAnim();
       set(parseFloat(range.value));
     });
-    num.addEventListener("input", () => {
-      stopAnim();
-      set(parseFloat(num.value) || 0);
-    });
+    // Touching the box takes the motor off a running move, whether or not the
+    // keystroke finished a number.
+    num.addEventListener("input", stopAnim);
+    bindTypedNumber(
+      num,
+      lo,
+      hi,
+      (v) => set(v, false, true),
+      () => Number(st.angles[name].toFixed(2)),
+    );
     run.addEventListener("click", () => {
       if (spinning.has(name)) {
         spinning.delete(name);
@@ -412,22 +471,29 @@ function buildRotRows() {
     ["ry", "#8ceb8c"],
     ["rz", "#82afff"],
   ]) {
+    const [lo, hi] = [-180, 180];
     const row = document.createElement("div");
     row.className = "motor";
     row.innerHTML =
       `<span class="name" style="color:${colour}">${name}</span>` +
-      `<input type="range" min="-180" max="180" step="0.1" value="0">` +
-      `<input type="number" min="-180" max="180" step="1" value="0">`;
+      `<input type="range" min="${lo}" max="${hi}" step="0.1" value="0">` +
+      `<input type="number" min="${lo}" max="${hi}" step="1" value="0">`;
     const [range, num] = [row.children[1], row.children[2]];
-    const set = (v, silent) => {
+    const set = (v, silent, keepBox) => {
       range.value = v;
-      num.value = Number(v.toFixed(1));
+      if (!keepBox) num.value = Number(v.toFixed(1));
       st.rot[name] = v;
       st.U = P.matMul(P.eulerMatrix(st.rot.rx, st.rot.ry, st.rot.rz), st.Ubase);
       if (!silent) requestSim();
     };
     range.addEventListener("input", () => set(parseFloat(range.value)));
-    num.addEventListener("input", () => set(parseFloat(num.value) || 0));
+    bindTypedNumber(
+      num,
+      lo,
+      hi,
+      (v) => set(v, false, true),
+      () => Number(st.rot[name].toFixed(1)),
+    );
     rotRows[name] = { set };
     host.appendChild(row);
   }
@@ -449,6 +515,11 @@ function stopAnim() {
 function animateTo(targets, steps = 26) {
   const start = {};
   for (const k of Object.keys(targets)) start[k] = st.angles[k];
+  // Build for where the arm is going before it sets off, so the reflection it
+  // is driving to is on the frame for the whole move rather than appearing at
+  // the end of it. simulate() still grows the list on the way, which covers a
+  // path that swings further out than either end of it.
+  growReflections(Math.max(qmaxAt(), qmaxAt({ ...st.angles, ...targets })));
   animation = { start, targets, i: 0, steps };
 }
 
@@ -499,43 +570,55 @@ function bindInputs() {
     el.max === "" ? Infinity : parseFloat(el.max),
   ];
 
-  const num = (id, key, after) => {
+  const shownWavelength = () => st.wavelength.toFixed(4);
+  const shownEnergy = () => (HC / st.wavelength).toFixed(3);
+
+  // The range matters as much as the finiteness, which is why bindTypedNumber
+  // is given both: clearing the wavelength box and typing gives a moment at
+  // zero, where k = 2*pi/lambda is infinite, the limiting sphere has no bound,
+  // and hklWithinQmax tries to enumerate every integer triple. That crashes
+  // the tab rather than drawing nothing.
+  const num = (id, key, after, show = () => st[key]) => {
     const el = $(id);
     el.value = st[key];
-    el.addEventListener("input", () => {
-      const v = parseFloat(el.value);
-      const [lo, hi] = limitsOf(el);
-      // A half-typed number is not an error and must simply be ignored until
-      // it is finished. Letting one through is: clearing the wavelength box
-      // and typing gives a moment at zero, where k = 2*pi/lambda is infinite,
-      // the limiting sphere has no bound, and hklWithinQmax tries to enumerate
-      // every integer triple. That crashes the tab rather than drawing
-      // nothing, so the range is checked and not merely the finiteness.
-      if (!Number.isFinite(v) || v < lo || v > hi) return;
-      st[key] = v;
-      if (after) after();
-      requestSim();
-    });
+    const [lo, hi] = limitsOf(el);
+    bindTypedNumber(
+      el,
+      lo,
+      hi,
+      (v) => {
+        st[key] = v;
+        if (after) after();
+        requestSim();
+      },
+      show,
+    );
   };
 
-  num("wl", "wavelength", () => {
-    $("energy").value = (HC / st.wavelength).toFixed(3);
-    needRebuild = true;
-  });
+  num(
+    "wl",
+    "wavelength",
+    () => {
+      $("energy").value = shownEnergy();
+      needRebuild = true;
+    },
+    shownWavelength,
+  );
   // both boxes carry the same rounding they get from each other's handler, so
   // the exact default (a/9) shows as a wavelength and not as a raw float
-  $("wl").value = st.wavelength.toFixed(4);
-  $("energy").value = (HC / st.wavelength).toFixed(3);
-  $("energy").addEventListener("input", () => {
-    const el = $("energy");
-    const e = parseFloat(el.value);
-    const [lo, hi] = limitsOf(el);
-    if (!Number.isFinite(e) || e < lo || e > hi) return;
-    st.wavelength = HC / e;
-    $("wl").value = st.wavelength.toFixed(4);
-    needRebuild = true;
-    requestSim();
-  });
+  $("wl").value = shownWavelength();
+  $("energy").value = shownEnergy();
+  bindTypedNumber(
+    $("energy"),
+    ...limitsOf($("energy")),
+    (e) => {
+      st.wavelength = HC / e;
+      $("wl").value = shownWavelength();
+      needRebuild = true;
+      requestSim();
+    },
+    shownEnergy,
+  );
   num("pixel", "pixelSize", () => {
     needRebuild = true;
   });
