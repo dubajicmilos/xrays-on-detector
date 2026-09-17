@@ -24,7 +24,12 @@
 
 import { cross, dot, matVec, norm, TWO_PI, unit } from "../../js/physics.js";
 import { electronWavelength } from "../../js/scatter.js";
-import { layerStep, reduceZone, zoneBasis } from "./section.js";
+import {
+  guardCandidates,
+  layerStep,
+  reduceZone,
+  zoneBasis,
+} from "./section.js";
 
 const sinc = (x) => (x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x));
 
@@ -86,6 +91,7 @@ export function computeTem(
 
   const seen = new Set();
   const hkl = [];
+  let candidates = 0;
   for (let layer = 0; layer <= maxZone; layer++) {
     const origin = matVec(
       B,
@@ -97,6 +103,8 @@ export function computeTem(
       Math.ceil(R * (Math.abs(gi[0][0]) * n1 + Math.abs(gi[0][1]) * n2)) + 1;
     const bMax =
       Math.ceil(R * (Math.abs(gi[1][0]) * n1 + Math.abs(gi[1][1]) * n2)) + 1;
+    candidates += (2 * aMax + 1) * (2 * bMax + 1);
+    guardCandidates(candidates, dMin);
     for (let a = -aMax; a <= aMax; a++)
       for (let b = -bMax; b <= bMax; b++) {
         const h = layer * p[0] + a * g1[0] + b * g2[0];

@@ -182,7 +182,8 @@ export class Structure {
       throw new Error(
         `a d min of ${dMin.toFixed(4)} Å means ${count.toExponential(2)} ` +
           `candidate reflections for this cell, which is more than the browser ` +
-          `can hold. Raise d min above about ${(dMin / shrink).toFixed(3)} Å.`,
+          `can hold. Raise d min above about ${(dMin / shrink).toFixed(3)} Å ` +
+          `(for a powder pattern, lower the 2θ limit or use a longer wavelength).`,
       );
     }
     const out = [];
@@ -204,7 +205,7 @@ export class Structure {
       cell: `a ${a.toFixed(4)}  b ${b.toFixed(4)}  c ${c.toFixed(4)} Å`,
       angles: `α ${alpha.toFixed(3)}  β ${beta.toFixed(3)}  γ ${gamma.toFixed(3)}°`,
       volume: `V ${this.volume.toFixed(2)} Å³`,
-      atoms: `${this.n} atoms in P1`,
+      atoms: `${this.n} ${this.n === 1 ? "atom" : "atoms"} in P1`,
     };
   }
 }

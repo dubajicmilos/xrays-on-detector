@@ -131,6 +131,8 @@ def factors(radiation: str, symbols, s) -> np.ndarray:
 def electron_wavelength(kv: float) -> float:
     """Relativistic electron wavelength in Angstrom for an accelerating
     voltage in kV. 200 kV -> 0.02508 Angstrom."""
+    if not kv > 0:
+        raise ValueError("the accelerating voltage must be positive")
     V = kv * 1e3
     h, m, e, c = 6.62607015e-34, 9.1093837015e-31, 1.602176634e-19, 2.99792458e8
     lam = h / np.sqrt(2 * m * e * V * (1 + e * V / (2 * m * c * c)))

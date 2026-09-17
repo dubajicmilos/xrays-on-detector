@@ -26,6 +26,10 @@
       rel="license"
       href="https://github.com/dubajicmilos/xrays-on-detector/blob/main/LICENSE"
     />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b0e18'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%2378e6ff'/%3E%3Ccircle cx='14' cy='32' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='50' cy='32' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='32' cy='14' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='32' cy='50' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='18' cy='18' r='2' fill='%2378e6ff' opacity='.45'/%3E%3Ccircle cx='46' cy='18' r='2' fill='%2378e6ff' opacity='.45'/%3E%3Ccircle cx='18' cy='46' r='2' fill='%2378e6ff' opacity='.45'/%3E%3Ccircle cx='46' cy='46' r='2' fill='%2378e6ff' opacity='.45'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="../css/app.css" />
     <link rel="stylesheet" href="css/sc.css" />
   </head>
@@ -94,7 +98,7 @@
 
         <section class="grp">
           <h2>Beam</h2>
-          <div class="row">
+          <div class="row" id="rowDmin">
             <label>d min</label
             ><input
               type="number"
@@ -155,12 +159,12 @@
 
         <section class="grp">
           <h2>Display</h2>
-          <div class="row">
+          <div class="row" id="rowGain">
             <label>Contrast</label
             ><input type="range" id="gain" min="0" max="60" value="0" />
             <span class="u" id="gainLabel">×1</span>
           </div>
-          <div class="row">
+          <div class="row" id="rowSpot">
             <label>Spot size</label
             ><input type="range" id="spotSize" min="2" max="26" value="9" />
           </div>
@@ -170,14 +174,18 @@
             <span class="u" id="labelThrLabel">35%</span>
           </div>
           <div class="checks">
-            <label><input type="checkbox" id="logScale" /> log intensity</label>
+            <label id="chkLog"
+              ><input type="checkbox" id="logScale" /> log intensity</label
+            >
             <label
               ><input type="checkbox" id="showLabels" checked /> hkl
               labels</label
             >
-            <label><input type="checkbox" id="showRings" /> Laue rings</label>
+            <label id="chkRings"
+              ><input type="checkbox" id="showRings" /> Laue rings</label
+            >
           </div>
-          <div class="row">
+          <div class="row" id="rowColours">
             <label>Colours</label
             ><select id="colormap"></select>
           </div>

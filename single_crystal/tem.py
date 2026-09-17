@@ -29,7 +29,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .scatter import electron_wavelength
-from .section import TWO_PI, layer_step, reduce_zone, zone_basis
+from .section import TWO_PI, guard_candidates, layer_step, reduce_zone, zone_basis
 
 
 def d_min_for_zone(structure, uvw, zone: int, kv: float = 200.0) -> float:
@@ -138,6 +138,7 @@ def compute_tem(
     Ginv = np.linalg.inv(G)
 
     hkl_all = []
+    candidates = 0
     for layer in range(0, max_zone + 1):
         origin = B @ (layer * p).astype(float)
         o_in = origin - np.dot(origin, n_hat) * n_hat
@@ -146,6 +147,8 @@ def compute_tem(
                                    + abs(Ginv[0, 1]) * np.linalg.norm(e2)))) + 1
         b_max = int(math.ceil(R * (abs(Ginv[1, 0]) * np.linalg.norm(e1)
                                    + abs(Ginv[1, 1]) * np.linalg.norm(e2)))) + 1
+        candidates += (2 * a_max + 1) * (2 * b_max + 1)
+        guard_candidates(candidates, TWO_PI / q_max)
         aa, bb = np.meshgrid(
             np.arange(-a_max, a_max + 1), np.arange(-b_max, b_max + 1), indexing="ij"
         )

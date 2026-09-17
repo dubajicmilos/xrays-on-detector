@@ -36,8 +36,8 @@ export function computePowder(
   const hkl = structure.hklWithin(dMin);
   if (!hkl.length)
     throw new Error(
-      `no reflections with d ≥ ${dMin.toFixed(3)} Å; try a longer wavelength ` +
-        "or a smaller 2θ limit",
+      `no reflections with d ≥ ${dMin.toFixed(3)} Å; try a shorter wavelength ` +
+        "or a larger 2θ limit",
     );
 
   const q = new Float64Array(hkl.length / 3);

@@ -88,10 +88,30 @@ def zone_basis(B: np.ndarray, uvw) -> tuple[np.ndarray, np.ndarray]:
     max|u, v, w|.
     """
     uvw = np.asarray(uvw, dtype=int)
+    u, v, w = (int(x) for x in uvw)
     R = int(max(abs(uvw))) + 1
     rng = np.arange(-R, R + 1)
-    grid = np.stack(np.meshgrid(rng, rng, rng, indexing="ij"), axis=-1).reshape(-1, 3)
-    grid = grid[(grid @ uvw) == 0]
+    # The kernel is a plane in index space, so the third index follows from
+    # the other two and the search is over a square, not a cube. The
+    # candidates come out in the order the cube gave them, so the stable sort
+    # below picks the same basis it always did.
+    if w != 0:
+        H, K = np.meshgrid(rng, rng, indexing="ij")
+        S = H * u + K * v
+        ok = S % w == 0
+        L = np.where(ok, -(S // w), 0)
+        ok &= np.abs(L) <= R
+        grid = np.stack([H[ok], K[ok], L[ok]], axis=1)
+    elif v != 0:
+        H, L = np.meshgrid(rng, rng, indexing="ij")
+        S = H * u
+        ok = S % v == 0
+        K = np.where(ok, -(S // v), 0)
+        ok &= np.abs(K) <= R
+        grid = np.stack([H[ok], K[ok], L[ok]], axis=1)
+    else:
+        K, L = np.meshgrid(rng, rng, indexing="ij")
+        grid = np.stack([np.zeros_like(K), K, L], axis=-1).reshape(-1, 3)
     grid = grid[np.any(grid != 0, axis=1)]
     if len(grid) < 2:
         raise ValueError(f"no reflections lie in the zone {uvw}")
@@ -188,6 +208,23 @@ class Section:
         return self.hkl[order[:k]], self.intensity[order[:k]]
 
 
+MAX_PLANE_CANDIDATES = 4_000_000
+
+
+def guard_candidates(count, d_min, limit=MAX_PLANE_CANDIDATES):
+    """Refuse a section or zone-axis pattern that would enumerate more than
+    `limit` candidate reflections: a small d min means millions in a plane.
+    The count grows as 1/d_min^2, which is what sizes the suggestion."""
+    if count <= limit:
+        return
+    need = d_min * math.sqrt(count / limit)
+    raise ValueError(
+        f"a d min of {d_min:.4f} Å means {count:.2e} candidate reflections in "
+        f"this zone, which is more than can be held. Raise d min above about "
+        f"{need:.3f} Å."
+    )
+
+
 def compute_section(
     structure,
     uvw=(0, 0, 1),
@@ -242,6 +279,7 @@ def compute_section(
                                + abs(Ginv[0, 1]) * np.linalg.norm(e2)))) + 1
     b_max = int(math.ceil(R * (abs(Ginv[1, 0]) * np.linalg.norm(e1)
                                + abs(Ginv[1, 1]) * np.linalg.norm(e2)))) + 1
+    guard_candidates((2 * a_max + 1) * (2 * b_max + 1), TWO_PI / q_max)
 
     A = np.arange(-a_max, a_max + 1)
     Bc = np.arange(-b_max, b_max + 1)

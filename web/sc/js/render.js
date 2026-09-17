@@ -145,7 +145,8 @@ export class PatternView {
 
     if (!result || result.count === 0) {
       this.message(
-        "no reflections here\ntry a lower d min, or a different layer",
+        "no reflections here\ntry a lower d min" +
+          (result && result.zoneRadii ? "" : ", or a different layer"),
         "#f0a05a",
       );
       return;
@@ -366,13 +367,21 @@ export class PatternView {
     ctx.fillStyle = DIM;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    const tick = niceStep(ttMax) * 1.5;
+    // A "nice" step (1, 2, 2.5 or 5 times a power of ten), printed with as
+    // many decimals as it needs, so the labels read what the ticks are at.
+    // The 1.5 goes inside, where it only thins the ticks: multiplying the
+    // step itself gave 1.5 and 7.5 degree ticks labelled as 2 and 8.
+    const tick = niceStep(ttMax * 1.5);
+    const mant = tick / Math.pow(10, Math.floor(Math.log10(tick)));
+    const decimals =
+      Math.max(0, -Math.floor(Math.log10(tick))) +
+      (Math.abs(mant - 2.5) < 1e-9 ? 1 : 0);
     for (let tt = 0; tt <= ttMax + 1e-9; tt += tick) {
       ctx.beginPath();
       ctx.moveTo(X(tt), padT);
       ctx.lineTo(X(tt), padT + plotH);
       ctx.stroke();
-      ctx.fillText(tt.toFixed(tick < 1 ? 1 : 0), X(tt), padT + plotH + 6 * dpr);
+      ctx.fillText(tt.toFixed(decimals), X(tt), padT + plotH + 6 * dpr);
     }
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";

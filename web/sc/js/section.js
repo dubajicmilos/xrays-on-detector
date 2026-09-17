@@ -77,15 +77,36 @@ export function layerStep(uvw) {
  * kernel has vectors with entries no larger than max|u,v,w|.
  */
 export function zoneBasis(B, uvw) {
+  const [u, v, w] = uvw;
   const R = Math.max(...uvw.map(Math.abs)) + 1;
+  // The kernel is a plane in index space, so the third index follows from
+  // the other two and the search is over a square, not a cube: [1 0 60] took
+  // a second through the cube and [1 0 600] minutes. The candidates come out
+  // in the order the cube gave them, so the stable sort below picks the same
+  // basis it always did.
   const cand = [];
-  for (let h = -R; h <= R; h++)
-    for (let k = -R; k <= R; k++)
-      for (let l = -R; l <= R; l++) {
-        if (h === 0 && k === 0 && l === 0) continue;
-        if (h * uvw[0] + k * uvw[1] + l * uvw[2] !== 0) continue;
-        cand.push([h, k, l]);
+  const push = (h, k, l) => {
+    if (h || k || l) cand.push([h, k, l]);
+  };
+  if (w !== 0) {
+    for (let h = -R; h <= R; h++)
+      for (let k = -R; k <= R; k++) {
+        const s = h * u + k * v;
+        if (s % w !== 0) continue;
+        const l = s === 0 ? 0 : -s / w;
+        if (Math.abs(l) <= R) push(h, k, l);
       }
+  } else if (v !== 0) {
+    for (let h = -R; h <= R; h++) {
+      const s = h * u;
+      if (s % v !== 0) continue;
+      const k = s === 0 ? 0 : -s / v;
+      if (Math.abs(k) > R) continue;
+      for (let l = -R; l <= R; l++) push(h, k, l);
+    }
+  } else {
+    for (let k = -R; k <= R; k++) for (let l = -R; l <= R; l++) push(0, k, l);
+  }
   if (cand.length < 2) throw new Error(`no reflections lie in the zone ${uvw}`);
   cand.sort((p, q) => norm(matVec(B, p)) - norm(matVec(B, q)));
 
@@ -120,6 +141,22 @@ export function zoneBasis(B, uvw) {
   let b = canonical(g2);
   if (dot(cross(a, b), uvw) < 0) b = b.map((x) => -x);
   return [a, b];
+}
+
+/**
+ * Refuse a section or zone-axis pattern that would enumerate more than
+ * `max` candidate reflections; a small d min means millions in a plane.
+ * The count grows as 1/dMin^2, which is what sizes the suggestion.
+ */
+export const MAX_PLANE_CANDIDATES = 4e6;
+export function guardCandidates(count, dMin, max = MAX_PLANE_CANDIDATES) {
+  if (count <= max) return;
+  const need = dMin * Math.sqrt(count / max);
+  throw new Error(
+    `a d min of ${dMin.toFixed(4)} Å means ${count.toExponential(2)} ` +
+      `candidate reflections in this zone, which is more than the browser ` +
+      `can hold. Raise d min above about ${need.toFixed(3)} Å.`,
+  );
 }
 
 /**
@@ -191,6 +228,7 @@ export function computeSection(
     Math.ceil(R * (Math.abs(gi[0][0]) * n1 + Math.abs(gi[0][1]) * n2)) + 1;
   const bMax =
     Math.ceil(R * (Math.abs(gi[1][0]) * n1 + Math.abs(gi[1][1]) * n2)) + 1;
+  guardCandidates((2 * aMax + 1) * (2 * bMax + 1), dMin);
 
   const hkl = [];
   for (let a = -aMax; a <= aMax; a++)

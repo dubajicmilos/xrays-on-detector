@@ -104,6 +104,7 @@ export function factorsAt(radiation, symbols, s) {
  * kV. 200 kV gives 0.02508 Angstrom.
  */
 export function electronWavelength(kv) {
+  if (!(kv > 0)) throw new Error("the accelerating voltage must be positive");
   const V = kv * 1e3;
   const h = 6.62607015e-34;
   const m = 9.1093837015e-31;

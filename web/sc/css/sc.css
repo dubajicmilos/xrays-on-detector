@@ -25,6 +25,8 @@
   position: absolute;
   top: 10px;
   left: 14px;
+  /* stops short of the zoom control in the top-right corner */
+  right: 160px;
   pointer-events: none;
   text-shadow: 0 1px 3px #000;
 }
@@ -35,7 +37,7 @@
     ui-monospace,
     monospace;
   color: #a5b2cd;
-  white-space: pre;
+  white-space: pre-wrap;
 }
 
 #hover {
@@ -60,6 +62,10 @@
   color: #7f8da9;
   pointer-events: none;
   max-width: calc(100% - 28px);
+  /* one line, clipped, so a narrow pane does not wrap it over the scale bar */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #status.warn {
