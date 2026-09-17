@@ -346,12 +346,16 @@ def box_quads(centre, e1, e2, e3, h1, h2, h3, R=None):
 def build_lut(name: str = "inferno") -> np.ndarray:
     try:
         import matplotlib
-        cmap = matplotlib.colormaps[name]
-        lut = (np.asarray([cmap(i / 255.0)[:3] for i in range(256)]) * 255)
-        return lut.astype(np.uint8)
-    except Exception:
+    except ImportError:
+        # A grey ramp keeps the app usable; say so rather than fall back in
+        # silence. An unknown colour map name is a real error and raises.
+        warnings.warn("matplotlib is not installed, so the detector image "
+                      "uses a grey ramp instead of a colour map")
         g = np.linspace(0, 255, 256).astype(np.uint8)
         return np.stack([g, g, g], axis=1)
+    cmap = matplotlib.colormaps[name]
+    lut = (np.asarray([cmap(i / 255.0)[:3] for i in range(256)]) * 255)
+    return lut.astype(np.uint8)
 
 
 _LUT_CACHE = {}

@@ -11,7 +11,12 @@ Checks:
      independent form factor table (SKIPS if pymatgen is absent);
   D. neutrons: D and H differ in sign, and the sum uses it;
   E. SAED: the higher-order Laue rings land where sqrt(2 k H n) says;
-  F. powder: Bragg positions and cubic multiplicities.
+  F. powder: Bragg positions and cubic multiplicities;
+  G. |F|^2 per reflection for neutrons and electrons against pymatgen's
+     lengths and the Peng table (SKIPS without pymatgen, orjson and diffsims);
+  H. section geometry: axes and coordinates for an oblique zone;
+  I. symmetry expansion on sixteen space groups against pymatgen;
+  J. occupancy: |F|^2 goes as occ^2 and partial occupancies survive expansion.
 
 C is the one that matters. The reason this package exists is that the earlier
 streamlit viewer summed only over the atoms literally listed in the CIF and
@@ -34,6 +39,12 @@ STRUCTURES = os.path.join(os.path.dirname(HERE), "examples", "structures")
 NAMES = ["CsPbBr3", "MAPbI3_Pm-3m", "MAPbI3_Pnma_pseudocubic", "PEA2PbBr4"]
 
 failures = []
+
+# The labels below use Greek letters; a console in a legacy code page would
+# otherwise die on the first one printed.
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(errors="replace")
 
 
 def check(label, ok, detail=""):
@@ -263,8 +274,12 @@ def test_structure_factors_all_radiations():
     if PmgStructure is None:
         print("  SKIP  pymatgen not usable")
         return
-    import orjson
-    from diffsims.utils.atomic_scattering_params import ATOMIC_SCATTERING_PARAMS as PENG
+    try:
+        import orjson
+        from diffsims.utils.atomic_scattering_params import ATOMIC_SCATTERING_PARAMS as PENG
+    except ImportError as exc:
+        print(f"  SKIP  {exc.name} not installed")
+        return
 
     blen = orjson.loads(
         open(

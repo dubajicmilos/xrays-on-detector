@@ -236,9 +236,13 @@ class Instrument:
     mode: str = "transmission"       # or "reflection"
     surface_hkl: tuple = (0, 0, 1)
 
-    # reflection list cache
+    # Reflection list cache, with the |Q| it was built out to. The panel's
+    # reach depends on where the arm stands, so a list built with the arm at
+    # zero is short once it swings out; the GUI compares q_max() with this and
+    # extends the list when the arm has walked past it.
     hkl: np.ndarray | None = None
     Fmag2: np.ndarray | None = None
+    built_qmax: float = 0.0
 
     polarization_mode: str = "horizontal"
     n_sigma: float = 4.0
@@ -289,13 +293,17 @@ class Instrument:
     def q_max(self) -> float:
         return self.detector_obj(1).max_Qmax(self.wavelength)
 
-    def build_reflection_list(self, progress=None) -> int:
+    def build_reflection_list(self, progress=None, q_max: float | None = None) -> int:
         """Generate hkl within the detector's Q range and their |F|^2.
 
         `progress` is an optional callable taking (done, total); the CIF path
         is a per-reflection Python loop into pytilting and can take seconds.
+        `q_max` overrides the panel's reach at the current arm position, so a
+        caller can build a little past it and not rebuild on every step of a
+        drag.
         """
-        hkl = self.crystal.hkl_within_Qmax(self.q_max())
+        q = self.q_max() if q_max is None else float(q_max)
+        hkl = self.crystal.hkl_within_Qmax(q)
         if progress is None or isinstance(self.crystal, LatticeCrystal):
             Fmag2 = self.crystal.structure_factor_mag2(hkl)
         else:
@@ -306,6 +314,7 @@ class Instrument:
                     hkl[i:i + chunk])
                 progress(min(i + chunk, len(hkl)), len(hkl))
         self.hkl, self.Fmag2 = hkl, Fmag2
+        self.built_qmax = q
         return len(hkl)
 
     # -- forward simulation ----------------------------------------------

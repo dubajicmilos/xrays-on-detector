@@ -82,8 +82,13 @@ class Crystal:
         used_cif = cif_path
         if expand_symmetry:
             used_cif, _ = _expand_to_p1(cif_path)
-        with contextlib.redirect_stdout(io.StringIO()):
-            calc = sfc.StructureFactorCalculator(used_cif)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                calc = sfc.StructureFactorCalculator(used_cif)
+        finally:
+            # the expanded copy is read at construction and not needed again
+            if used_cif != cif_path:
+                os.remove(used_cif)
         B = np.asarray(calc.G, dtype=float)
         return cls(
             calc=calc,

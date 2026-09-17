@@ -12,8 +12,8 @@ the earlier streamlit viewer untrustworthy for a general CIF.
 
 Operators come from the file itself rather than a space-group table, which
 covers essentially every CIF in the wild: a listed operator set is complete by
-definition, centring included. Only a file with no operators falls back to the
-Hermann-Mauguin symbol, and one naming a symmetry it does not spell out is
+definition, centring included. A file with no operators is taken as P1 only if
+it claims no other symmetry; one naming a symmetry it does not spell out is
 refused rather than quietly expanded into a structure that looks plausible.
 """
 from __future__ import annotations
@@ -26,16 +26,6 @@ from dataclasses import dataclass, field
 class CifError(Exception):
     """A CIF we will not read, with a message meant for the user."""
 
-
-CENTRING = {
-    "P": [(0, 0, 0)],
-    "I": [(0, 0, 0), (0.5, 0.5, 0.5)],
-    "F": [(0, 0, 0), (0, 0.5, 0.5), (0.5, 0, 0.5), (0.5, 0.5, 0)],
-    "A": [(0, 0, 0), (0, 0.5, 0.5)],
-    "B": [(0, 0, 0), (0.5, 0, 0.5)],
-    "C": [(0, 0, 0), (0.5, 0.5, 0)],
-    "R": [(0, 0, 0), (2 / 3, 1 / 3, 1 / 3), (1 / 3, 2 / 3, 2 / 3)],
-}
 
 # Every element our scattering tables cover. Set by scatter.py at import so an
 # unknown atom type is caught while reading rather than scattering as zero.
@@ -392,10 +382,8 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
             "Export it as P1 (VESTA, or ASE read/write) and load that."
         )
 
-    # A file that lists operators lists all of them, centring included, so the
-    # symbol is only consulted when there are none to go on.
-    letter = symbol.lstrip("-+")[0].upper() if symbol else "P"
-    centring = CENTRING["P"] if sym_loop else CENTRING.get(letter, CENTRING["P"])
+    # A file that lists operators lists all of them, centring included, and a
+    # file that reaches here without any is P1, so no centring is ever added.
 
     # -- atom sites
     atom_loop = next(
@@ -484,35 +472,30 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
     for s in sites:
         kept: list = []
         for op in ops:
-            for t in centring:
-                p = [
-                    _wrap(
-                        op[i][0] * s["x"]
-                        + op[i][1] * s["y"]
-                        + op[i][2] * s["z"]
-                        + op[i][3]
-                        + t[i]
-                    )
-                    for i in range(3)
-                ]
-                if any(near(p, q) for q in kept):
-                    continue
-                kept.append(p)
-                # Full precision. Rounding to six decimals costs nothing on a
-                # coordinate like 0.25 and 3e-7 on a hexagonal 1/3, which is
-                # enough to move |F|^2 by 1e-5 relative -- invisible on screen,
-                # but a needless disagreement with any other code.
-                atoms.append(
-                    Atom(
-                        element=s["el"],
-                        nuclide=s["nuc"],
-                        x=p[0],
-                        y=p[1],
-                        z=p[2],
-                        occ=s["occ"],
-                        B=s["B"],
-                    )
+            p = [
+                _wrap(
+                    op[i][0] * s["x"] + op[i][1] * s["y"] + op[i][2] * s["z"] + op[i][3]
                 )
+                for i in range(3)
+            ]
+            if any(near(p, q) for q in kept):
+                continue
+            kept.append(p)
+            # Full precision. Rounding to six decimals costs nothing on a
+            # coordinate like 0.25 and 3e-7 on a hexagonal 1/3, which is
+            # enough to move |F|^2 by 1e-5 relative -- invisible on screen,
+            # but a needless disagreement with any other code.
+            atoms.append(
+                Atom(
+                    element=s["el"],
+                    nuclide=s["nuc"],
+                    x=p[0],
+                    y=p[1],
+                    z=p[2],
+                    occ=s["occ"],
+                    B=s["B"],
+                )
+            )
 
     return CifStructure(
         name=name,

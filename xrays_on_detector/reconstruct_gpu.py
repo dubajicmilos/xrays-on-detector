@@ -71,7 +71,7 @@ def reconstruct_volume_gpu(frames, phis, UB, R0, detector, *, phi0,
     corrections : None/False (raw counts), True (solid-angle + polarisation with
         default synchrotron parameters), a dict forwarded to pixel_corrections, or
         a precomputed (Npix,) multiplier in the detector's ravel order.
-    device   : CUDA device index (RTX 3090 = 0).
+    device   : CUDA device index.
     prefetch : frames to read ahead on background threads (0 = synchronous read).
     """
     import cupy as cp
@@ -101,6 +101,10 @@ def reconstruct_volume_gpu(frames, phis, UB, R0, detector, *, phi0,
     r_lab_g = cp.asarray(r_lab)
     corr_g = None if corr is None else cp.asarray(corr)          # float64 (Npix,)
 
+    if nvox >= 2**31:
+        raise ValueError(
+            f"a grid of {n}^3 = {nvox:.3g} voxels does not fit the int32 index "
+            "this kernel uses; coarsen the step or narrow the hkl range")
     ssum = cp.zeros(nvox, cp.float64)
     scount = cp.zeros(nvox, cp.int32)
     UBinv = np.linalg.inv(UB)
@@ -109,8 +113,9 @@ def reconstruct_volume_gpu(frames, phis, UB, R0, detector, *, phi0,
         Rn = _axis_rot(osc_axis, sense * (phi - phi0)) @ R0
         Mn = cp.asarray((UBinv @ Rn.T).astype(np.float32))       # hkl = r_lab @ Mn.T
         img = cp.asarray(img_host.ravel())
-        # int32 voxel indices (grid <= 480 so flat max ~1.1e8 fits int32);
-        # build flat once and compact with the mask a single time (not per column).
+        # int32 voxel indices: the grid is checked above to fit, since a flat
+        # index past 2^31 would wrap and land counts in the wrong voxels. Build
+        # flat once and compact with the mask a single time (not per column).
         vi = cp.floor((r_lab_g @ Mn.T - lo) / step).astype(cp.int32)
         h0, k0, l0 = vi[:, 0], vi[:, 1], vi[:, 2]
         inb = ((img >= 0)

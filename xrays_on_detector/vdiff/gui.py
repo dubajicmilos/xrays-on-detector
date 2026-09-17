@@ -332,7 +332,7 @@ class CifWorker(QThread):
                                    "pixel_size", "delta", "gamma")})
             probe.crystal = crystal
             n = probe.build_reflection_list(progress=self.progress.emit)
-            self.done.emit((crystal, probe.hkl, probe.Fmag2), n, "")
+            self.done.emit((crystal, probe.hkl, probe.Fmag2, probe.built_qmax), n, "")
         except Exception as exc:
             self.done.emit(None, 0, f"{type(exc).__name__}: {exc}")
 
@@ -953,8 +953,17 @@ class MainWindow(QMainWindow):
     def _run_simulation(self):
         try:
             if self._sim_pending or self.inst.hkl is None:
-                n = self.inst.build_reflection_list()
+                self.inst.build_reflection_list()
                 self._sim_pending = False
+            elif self.inst.q_max() > self.inst.built_qmax:
+                # The arm has swung past what the list holds, so a reflection
+                # the panel now reaches would be missing from the frame.
+                # Reach a little further than needed, so a drag does not
+                # rebuild on every step.
+                n = self.inst.build_reflection_list(q_max=self.inst.q_max() * 1.15)
+                self.status.showMessage(
+                    f"reflection list extended to {n} reflections for the arm's reach",
+                    2500)
             self.shot = self.inst.shoot()
             self._refresh_image()
             self._refresh_readouts()
@@ -1170,10 +1179,11 @@ class MainWindow(QMainWindow):
         if err:
             QMessageBox.critical(self, "CIF load failed", err)
             return
-        crystal, hkl, Fmag2 = res
+        crystal, hkl, Fmag2, built_qmax = res
         self.inst.crystal = crystal
         self.inst.hkl = hkl
         self.inst.Fmag2 = Fmag2
+        self.inst.built_qmax = built_qmax
         self.cb_cell.blockSignals(True)
         self.cb_cell.setCurrentIndex(-1)
         self.cb_cell.blockSignals(False)

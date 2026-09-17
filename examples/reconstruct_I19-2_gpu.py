@@ -35,7 +35,7 @@ OUTDIR = os.environ.get(
     "XOD_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
 os.makedirs(OUTDIR, exist_ok=True)
 
-RANGE, STEP = (-6.0, 6.0), 0.025          # user target: -6..6, 0.025 rlu, 480^3
+RANGE, STEP = (-6.0, 6.0), 0.025          # a 480^3 grid: -6..6 at 0.025 rlu
 NFRAMES = int(os.environ.get("NFRAMES", "1750"))   # override for a fast smoke test
 
 # ---------------------------------------------------------------- geometry setup
