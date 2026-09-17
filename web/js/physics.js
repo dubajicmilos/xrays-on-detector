@@ -325,7 +325,11 @@ export class Detector {
     };
   }
 
-  /** Geometrically identical detector with factor x factor pixels merged. */
+  /**
+   * Geometrically identical detector with factor x factor pixels merged.
+   * Pixel coordinates are pixel centres, so unbinned pixel c sits at
+   * (c + 0.5) / factor - 0.5 in the binned frame.
+   */
   binned(factor) {
     if (factor <= 1) return this;
     return new Detector({
@@ -335,8 +339,8 @@ export class Detector {
       pixelSize: this.pixelSize * factor,
       nu: this.nu,
       delta: this.delta,
-      beamCenterFast: this.beamCenterFast / factor,
-      beamCenterSlow: this.beamCenterSlow / factor,
+      beamCenterFast: (this.beamCenterFast + 0.5) / factor - 0.5,
+      beamCenterSlow: (this.beamCenterSlow + 0.5) / factor - 0.5,
     });
   }
 
@@ -360,23 +364,63 @@ export class Detector {
     return { fast, slow, inside, cosInc };
   }
 
-  /** Largest |Q| reachable at any detector corner, 2*pi convention. */
+  /**
+   * Largest |Q| reachable anywhere on the panel, 2*pi convention.
+   *
+   * The largest 2theta is not always at a corner: once the arm swings past
+   * 90 degrees it sits on an edge, and if the panel covers the back direction
+   * it is 180 degrees. For P = centre + u eFast + v eSlow,
+   * cos(2theta) = (a + b u + c v) / sqrt(D^2 + u^2 + v^2), which along an
+   * edge with one coordinate fixed has a single stationary point in closed
+   * form, so the minimum over the rectangle is found exactly from the
+   * corners, those points and the pierce point. Same algorithm as
+   * Detector.max_Qmax in the Python package. The panel extends half a pixel
+   * beyond the outermost pixel centres.
+   */
   maxQmax(wavelength) {
     const k = TWO_PI / wavelength;
-    const { centre, eFast, eSlow } = this.frame();
-    const hf = 0.5 * this.nFast * this.pixelSize;
-    const hs = 0.5 * this.nSlow * this.pixelSize;
-    let worst = 0;
-    for (const sf of [-1, 1])
-      for (const ss of [-1, 1]) {
-        const c = add(
-          centre,
-          add(scale(eFast, sf * hf), scale(eSlow, ss * hs)),
-        );
-        const tt = Math.acos(Math.min(1, Math.max(-1, dot(unit(c), BEAM))));
-        worst = Math.max(worst, tt);
+    const { eFast, eSlow, arm } = this.frame();
+    const D = this.distance;
+    const a = D * dot(arm, BEAM);
+    const b = dot(eFast, BEAM);
+    const c = dot(eSlow, BEAM);
+    const px = this.pixelSize;
+    const u0 = -(this.beamCenterFast + 0.5) * px;
+    const u1 = (this.nFast - 0.5 - this.beamCenterFast) * px;
+    const v0 = -(this.beamCenterSlow + 0.5) * px;
+    const v1 = (this.nSlow - 0.5 - this.beamCenterSlow) * px;
+
+    if (a < 0) {
+      // The back direction -BEAM meets the panel plane at t = -D/(arm.BEAM).
+      const t = (-D * D) / a;
+      const u = -t * b;
+      const v = -t * c;
+      if (u >= u0 && u <= u1 && v >= v0 && v <= v1) return 2 * k;
+    }
+
+    const cos2t = (u, v) =>
+      (a + b * u + c * v) / Math.sqrt(D * D + u * u + v * v);
+    let lowest = Infinity;
+    for (const u of [u0, u1])
+      for (const v of [v0, v1]) lowest = Math.min(lowest, cos2t(u, v));
+    for (const v of [v0, v1]) {
+      // edges of constant v
+      const ap = a + c * v;
+      if (ap !== 0) {
+        const us = (b * (D * D + v * v)) / ap;
+        if (us > u0 && us < u1) lowest = Math.min(lowest, cos2t(us, v));
       }
-    return 2 * k * Math.sin(worst / 2);
+    }
+    for (const u of [u0, u1]) {
+      // edges of constant u
+      const ap = a + b * u;
+      if (ap !== 0) {
+        const vs = (c * (D * D + u * u)) / ap;
+        if (vs > v0 && vs < v1) lowest = Math.min(lowest, cos2t(u, vs));
+      }
+    }
+    const tt = Math.acos(Math.min(1, Math.max(-1, lowest)));
+    return 2 * k * Math.sin(tt / 2);
   }
 }
 

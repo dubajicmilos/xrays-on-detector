@@ -14,11 +14,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as P from '../js/physics.js';
+import { polarization } from '../js/render.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fx = JSON.parse(readFileSync(join(here, 'fixture.json'), 'utf8'));
 const table = JSON.parse(readFileSync(join(here, '..', 'data', 'scattering_factors.json'), 'utf8'));
-const cspbbr3 = JSON.parse(readFileSync(join(here, '..', 'data', 'cspbbr3.json'), 'utf8'));
+// The bundled structure the fixture was built on, by the name the fixture
+// records (the data files are case-sensitive on a case-sensitive filesystem).
+const cspbbr3 = JSON.parse(readFileSync(
+  join(here, '..', 'data', `${fx.structure_factors.structure}.json`), 'utf8'));
 
 let failures = 0;
 const results = [];
@@ -91,6 +95,29 @@ const relDiff = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
   report('detector frame (centre/axes/arm)', worst, 1e-13);
   report('detector maxQmax', Math.abs(det.maxQmax(0.7293) - d.maxQmax), 1e-12);
 
+  // reach at arm positions where the largest 2theta is at a corner, on an
+  // edge, and at the back direction, with the beam centre on and off axis
+  let worstReach = 0;
+  for (const c of d.reach) {
+    const spec = { ...d.spec, nu: c.nu, delta: c.delta };
+    if (c.beamCenter) {
+      spec.beamCenterFast = c.beamCenter[0];
+      spec.beamCenterSlow = c.beamCenter[1];
+    }
+    const q = new P.Detector(spec).maxQmax(0.7293);
+    worstReach = Math.max(worstReach, Math.abs(q - c.maxQmax));
+  }
+  report('detector maxQmax at swung-out arms', worstReach, 1e-12,
+         `${d.reach.length} arm positions`);
+
+  const b4 = det.binned(4);
+  const bb = d.binned4;
+  report('binned detector (n, pixel, beam centre)', Math.max(
+    Math.abs(b4.nFast - bb.nFast), Math.abs(b4.nSlow - bb.nSlow),
+    Math.abs(b4.pixelSize - bb.pixelSize),
+    Math.abs(b4.beamCenterFast - bb.beamCenterFast),
+    Math.abs(b4.beamCenterSlow - bb.beamCenterSlow)), 1e-12);
+
   let px = 0, mism = 0;
   for (const r of d.rays) {
     const p = det.projectOne(r.khat);
@@ -145,6 +172,18 @@ const relDiff = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
   report('excited hkl identity', hklBad, 0);
   report('khat / eps / excitation / 2theta', worst, 1e-12,
          `${e.reflections.length} reflections`);
+
+  // polarization factor on the same reflections, both modes
+  let worstPol = 0;
+  order.forEach((idx, n) => {
+    const ref = e.reflections[n];
+    if (!ref) return;
+    for (const mode of ['horizontal', 'unpolarized']) {
+      const p = polarization(r.twoTheta[idx], mode, r.khat[3 * idx + 2]);
+      worstPol = Math.max(worstPol, Math.abs(p - ref.polarization[mode]));
+    }
+  });
+  report('polarization factor (both modes)', worstPol, 1e-13);
 }
 
 // --- 6. orientation --------------------------------------------------------

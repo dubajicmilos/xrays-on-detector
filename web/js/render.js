@@ -7,13 +7,18 @@
  * over the panel as a 2D Gaussian normalised to that total, so grazing spots
  * are broader and fainter per pixel but keep the same integrated counts.
  */
-import { BEAM, TWO_PI } from "./physics.js";
+import { TWO_PI } from "./physics.js";
 
-/** Polarization factor P(2theta). */
-export function polarization(twoTheta, mode, khatX) {
+/**
+ * Polarization factor P(2theta). "horizontal" is a synchrotron beam polarized
+ * in the horizontal plane, which is lab z here (lab x is the vertical), so it
+ * takes the z component of the outgoing direction: a reflection scattered
+ * horizontally is attenuated, one scattered vertically is not.
+ */
+export function polarization(twoTheta, mode, khatZ) {
   if (mode === "none") return 1;
   if (mode === "unpolarized") return 0.5 * (1 + Math.cos(twoTheta) ** 2);
-  if (mode === "horizontal") return 1 - khatX * khatX;
+  if (mode === "horizontal") return 1 - khatZ * khatZ;
   throw new Error(`unknown polarization mode ${mode}`);
 }
 
@@ -38,7 +43,7 @@ export function renderFrame(
     const p = det.projectOne(khat);
     if (!p.inside) continue;
 
-    const P = polarization(refl.twoTheta[i], polarizationMode, khat[0]);
+    const P = polarization(refl.twoTheta[i], polarizationMode, khat[2]);
     const total = refl.F2[i] * refl.excitation[i] * P;
     const ci = Math.max(p.cosInc, 1e-3);
     const sPx = Math.max(
@@ -203,5 +208,3 @@ export function blockedGeometry(khatFlat, count, length) {
   }
   return out;
 }
-
-export { BEAM };

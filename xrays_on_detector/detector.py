@@ -19,11 +19,11 @@ from .geometry import BEAM, detector_matrix
 @dataclass
 class Detector:
     distance: float          # sample -> detector centre (same length unit as pixel_size)
-    n_fast: int              # number of horizontal pixels
-    n_slow: int              # number of vertical pixels
+    n_fast: int              # pixels along the fast axis
+    n_slow: int              # pixels along the slow axis
     pixel_size: float        # square pixel edge length
-    nu: float = 0.0          # vertical detector circle (deg)
-    delta: float = 0.0       # horizontal detector circle (deg)
+    nu: float = 0.0          # detector circle about the vertical axis (deg): swings the arm horizontally
+    delta: float = 0.0       # detector circle about the horizontal axis (deg): swings the arm vertically
     beam_center_fast: float | None = None   # pixel hit by the arm axis (default: centre)
     beam_center_slow: float | None = None
 
@@ -82,16 +82,49 @@ class Detector:
         return fast_px, slow_px, inside, cos_inc
 
     def max_Qmax(self, wavelength: float) -> float:
-        """Largest |Q| (2*pi convention) reachable at any detector corner."""
+        """Largest |Q| (2*pi convention) reachable anywhere on the panel.
+
+        The largest 2theta on the panel is not always at a corner: once the arm
+        swings past 90 degrees it sits on an edge, and if the panel covers the
+        back direction it is 180 degrees. Written as a point P = centre +
+        u e_fast + v e_slow, cos(2theta) = (a + b u + c v) / sqrt(D^2 + u^2 +
+        v^2), which along an edge with one coordinate fixed has a single
+        stationary point in closed form, so the minimum over the rectangle is
+        found exactly from the corners, those points and the pierce point.
+        The panel extends half a pixel beyond the outermost pixel centres.
+        """
         k = 2.0 * np.pi / wavelength
-        centre, _, e_fast, e_slow, _ = self.frame()
-        half_f = 0.5 * self.n_fast * self.pixel_size
-        half_s = 0.5 * self.n_slow * self.pixel_size
-        corners = [
-            centre + sf * half_f * e_fast + ss * half_s * e_slow
-            for sf in (-1, 1) for ss in (-1, 1)
-        ]
-        two_theta = [
-            np.arccos(np.clip((c / np.linalg.norm(c)) @ BEAM, -1, 1)) for c in corners
-        ]
-        return 2.0 * k * np.sin(max(two_theta) / 2.0)
+        _, _, e_fast, e_slow, arm = self.frame()
+        D = self.distance
+        a = D * float(arm @ BEAM)
+        b = float(e_fast @ BEAM)
+        c = float(e_slow @ BEAM)
+        u0 = -(self.beam_center_fast + 0.5) * self.pixel_size
+        u1 = (self.n_fast - 0.5 - self.beam_center_fast) * self.pixel_size
+        v0 = -(self.beam_center_slow + 0.5) * self.pixel_size
+        v1 = (self.n_slow - 0.5 - self.beam_center_slow) * self.pixel_size
+
+        if a < 0:
+            # The back direction -BEAM meets the panel plane at t = -D/(arm.BEAM).
+            t = -D * D / a
+            if u0 <= -t * b <= u1 and v0 <= -t * c <= v1:
+                return 2.0 * k
+
+        def cos2t(u, v):
+            return (a + b * u + c * v) / np.sqrt(D * D + u * u + v * v)
+
+        cands = [cos2t(u, v) for u in (u0, u1) for v in (v0, v1)]
+        for v in (v0, v1):                       # edges of constant v
+            ap = a + c * v
+            if ap != 0:
+                us = b * (D * D + v * v) / ap
+                if u0 < us < u1:
+                    cands.append(cos2t(us, v))
+        for u in (u0, u1):                       # edges of constant u
+            ap = a + b * u
+            if ap != 0:
+                vs = c * (D * D + u * u) / ap
+                if v0 < vs < v1:
+                    cands.append(cos2t(u, vs))
+        two_theta = np.arccos(np.clip(min(cands), -1.0, 1.0))
+        return 2.0 * k * np.sin(two_theta / 2.0)
