@@ -88,21 +88,26 @@ class CifStructure:
     space_group: str | None = None
     block: str | None = None
     blocks_in_file: int = 1
+    skipped_sites: int = 0  # atom rows with no readable position
     source: str = ""
     _extra: dict = field(default_factory=dict, repr=False)
 
 
+_NUMERAL = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
+
+
 def _num(token):
-    """A CIF number: strip the estimated standard deviation, reject placeholders."""
+    """A CIF number: strip the estimated standard deviation, reject placeholders.
+
+    Only a decimal numeral is accepted: float() would also take "inf", "nan"
+    and "1_000", which no CIF means and which break the arithmetic downstream.
+    """
     if token is None:
         return None
     t = re.sub(r"\((\d+)\)$", "", str(token).strip())
-    if t in ("", "?", "."):
+    if not _NUMERAL.match(t):
         return None
-    try:
-        return float(t)
-    except ValueError:
-        return None
+    return float(t)
 
 
 def _tokenize(text: str):
@@ -132,7 +137,12 @@ def _tokenize(text: str):
             elif c == "#":
                 break
             elif c in "'\"":
+                # A quote closes the string only when followed by whitespace
+                # or the end of the line (CIF 1.1), so a label like C1'A'
+                # reads as one token.
                 end = line.find(c, j + 1)
+                while end >= 0 and end + 1 < len(line) and line[end + 1] not in " \t":
+                    end = line.find(c, end + 1)
                 if end < 0:
                     out.append((line[j + 1:], True))
                     break
@@ -163,11 +173,14 @@ def _parse_blocks(tokens):
     def is_word(t, w):
         return not t[1] and t[0].lower() == w
 
+    def is_data(t):
+        return not t[1] and t[0].lower().startswith("data_")
+
     i = 0
     n = len(tokens)
     while i < n:
         t = tokens[i]
-        if not t[1] and t[0].lower().startswith("data_"):
+        if is_data(t):
             if items or loops:
                 blocks.append((items, loops, name))
             name = t[0][5:]
@@ -184,7 +197,7 @@ def _parse_blocks(tokens):
                 i < n
                 and not is_tag(tokens[i])
                 and not is_word(tokens[i], "loop_")
-                and not (not tokens[i][1] and tokens[i][0].lower().startswith("data_"))
+                and not is_data(tokens[i])
             ):
                 row.append(tokens[i][0])
                 i += 1
@@ -195,7 +208,13 @@ def _parse_blocks(tokens):
         elif is_tag(t):
             tag = t[0].lower()
             i += 1
-            if i < n and not is_tag(tokens[i]) and not is_word(tokens[i], "loop_"):
+            # a tag with no value takes nothing: the next block must stay a block
+            if (
+                i < n
+                and not is_tag(tokens[i])
+                and not is_word(tokens[i], "loop_")
+                and not is_data(tokens[i])
+            ):
                 items[tag] = tokens[i][0]
                 i += 1
             else:
@@ -219,7 +238,10 @@ def _parse_operator(spec: str):
     for part in parts:
         row = [0.0, 0.0, 0.0, 0.0]
         cleaned = re.sub(r"\s+", "", part).lower()
-        for term in re.findall(r"[+-]?[^+-]+", cleaned):
+        terms = re.findall(r"[+-]?[^+-]+", cleaned)
+        if not terms:
+            raise CifError(f'symmetry operator "{spec}" has an empty part')
+        for term in terms:
             m = _TERM.match(term)
             if not m:
                 raise CifError(f'cannot read symmetry operator "{spec}"')
@@ -314,6 +336,17 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
     ]
     if any(v is None or v <= 0 for v in vals):
         raise CifError("the unit cell is missing or unreadable")
+    # The three angles must be able to meet at a corner, or no lattice exists:
+    # the same test bmatrix applies, made here so the file is refused at the
+    # door rather than failing later in a compute.
+    alpha, beta, gamma = vals[3:]
+    cos_a, cos_b = math.cos(math.radians(alpha)), math.cos(math.radians(beta))
+    cos_g, sin_g = math.cos(math.radians(gamma)), math.sin(math.radians(gamma))
+    cy0 = (cos_a - cos_b * cos_g) / sin_g
+    if any(v >= 180 for v in (alpha, beta, gamma)) or 1 - cos_b**2 - cy0**2 <= 0:
+        raise CifError(
+            f"cell angles {alpha:g}, {beta:g}, {gamma:g} do not describe a real lattice"
+        )
     cell = Cell(*vals)
 
     # -- symmetry operators, from the file
@@ -326,8 +359,12 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
         tags, rows = sym_loop
         col = next(i for i, t in enumerate(tags) if sym_re.search(t))
         specs = [r[col] for r in rows if col < len(r) and r[col]]
+        # A loop with the tag but no rows lists nothing, and is treated as no
+        # loop: it must not let a named symmetry through as though it were P1.
         if specs:
             ops = [_parse_operator(s) for s in specs]
+        else:
+            sym_loop = None
 
     # Whether a symmetry is claimed and whether it is written as a readable
     # Hermann-Mauguin symbol are different questions: files name the space
@@ -350,7 +387,7 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
 
     if not sym_loop and claims_symmetry:
         raise CifError(
-            f"this CIF names the space group {symbol or it_number} but lists no "
+            f"this CIF names the space group {symbol or int(it_number)} but lists no "
             "symmetry operators, so the full cell cannot be built from it. "
             "Export it as P1 (VESTA, or ASE read/write) and load that."
         )
@@ -388,9 +425,11 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
 
     sites = []
     unknown = set()
+    skipped = 0
     for r in rows:
         x, y, z = _num(cellval(r, cx)), _num(cellval(r, cy)), _num(cellval(r, cz))
         if x is None or y is None or z is None:
+            skipped += 1  # a site with an unknown or unreadable position
             continue
         el, nuc = _element(cellval(r, c_type), cellval(r, c_label))
         if not el:
@@ -427,8 +466,9 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
     # so the copies have to be merged or it scatters several times over. They
     # are compared with a tolerance and across the cell boundary, not by a
     # rounded key: two copies either side of a rounding step are the same atom.
-    # Different elements never merge, which keeps a site shared by a disordered
-    # C and N as the two contributions it physically is.
+    # Only copies of the same site merge. Two listed sites at one position, a
+    # disordered C and N or two half-occupied Pb, are the two contributions
+    # they physically are, and merging them would drop one's occupancy.
     TOL = 1e-3
 
     def near(p, q):
@@ -441,9 +481,8 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
         return s2 < TOL * TOL
 
     atoms: list[Atom] = []
-    by_element: dict[str, list] = {}
     for s in sites:
-        kept = by_element.setdefault(s["nuc"], [])
+        kept: list = []
         for op in ops:
             for t in centring:
                 p = [
@@ -482,6 +521,7 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
         space_group=symbol if symbol and not re.fullmatch(r"P1", symbol, re.I) else None,
         block=block_name or None,
         blocks_in_file=len(with_structure) or 1,
+        skipped_sites=skipped,
         source=name,
     )
 
