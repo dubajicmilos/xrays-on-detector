@@ -51,15 +51,19 @@ const CENTRING = {
   ],
 };
 
-/** A CIF number: strip the estimated standard deviation, reject placeholders. */
+/**
+ * A CIF number: strip the estimated standard deviation, reject placeholders.
+ * Only a decimal numeral is accepted; Number() would also take hex and
+ * binary forms that no CIF means.
+ */
+const NUMERAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 function num(token) {
   if (token === undefined || token === null) return null;
   const t = String(token)
     .trim()
     .replace(/\((\d+)\)$/, "");
-  if (t === "" || t === "?" || t === ".") return null;
-  const v = Number(t);
-  return Number.isFinite(v) ? v : null;
+  if (!NUMERAL.test(t)) return null;
+  return Number(t);
 }
 
 /**
@@ -86,7 +90,15 @@ function tokenize(text) {
       } else if (c === "#") {
         break; // comment to end of line
       } else if (c === "'" || c === '"') {
-        const end = line.indexOf(c, j + 1);
+        // A quote closes the string only when followed by whitespace or the
+        // end of the line (CIF 1.1), so a label like C1'A' reads as one token.
+        let end = line.indexOf(c, j + 1);
+        while (
+          end >= 0 &&
+          end + 1 < line.length &&
+          !" \t".includes(line[end + 1])
+        )
+          end = line.indexOf(c, end + 1);
         if (end < 0) {
           out.push({ value: line.slice(j + 1), quoted: true });
           break;
@@ -118,10 +130,11 @@ function parseBlocks(tokens) {
   let i = 0;
   const isTag = (t) => !t.quoted && t.value.startsWith("_");
   const isWord = (t, w) => !t.quoted && t.value.toLowerCase() === w;
+  const isData = (t) => !t.quoted && t.value.toLowerCase().startsWith("data_");
 
   while (i < tokens.length) {
     const t = tokens[i];
-    if (!t.quoted && t.value.toLowerCase().startsWith("data_")) {
+    if (isData(t)) {
       if (items.size || loops.length) blocks.push({ items, loops, name });
       name = t.value.slice(5);
       items = new Map();
@@ -138,9 +151,7 @@ function parseBlocks(tokens) {
         i < tokens.length &&
         !isTag(tokens[i]) &&
         !isWord(tokens[i], "loop_") &&
-        !(
-          !tokens[i].quoted && tokens[i].value.toLowerCase().startsWith("data_")
-        )
+        !isData(tokens[i])
       ) {
         row.push(tokens[i++].value);
         if (row.length === tags.length) {
@@ -152,7 +163,13 @@ function parseBlocks(tokens) {
     } else if (isTag(t)) {
       const tag = t.value.toLowerCase();
       i++;
-      if (i < tokens.length && !isTag(tokens[i]) && !isWord(tokens[i], "loop_"))
+      // a tag with no value takes nothing: the next block must stay a block
+      if (
+        i < tokens.length &&
+        !isTag(tokens[i]) &&
+        !isWord(tokens[i], "loop_") &&
+        !isData(tokens[i])
+      )
         items.set(tag, tokens[i++].value);
       else items.set(tag, "");
     } else {
@@ -171,7 +188,9 @@ function parseOperator(spec) {
   return parts.map((part) => {
     const row = [0, 0, 0, 0];
     const cleaned = part.replace(/\s+/g, "").toLowerCase();
-    const terms = cleaned.match(/[+-]?[^+-]+/g) || [];
+    const terms = cleaned.match(/[+-]?[^+-]+/g);
+    if (!terms)
+      throw new CifError(`symmetry operator "${spec}" has an empty part`);
     for (const term of terms) {
       const m = term.match(/^([+-]?)([\d./]*)\*?([xyz]?)$/);
       if (!m) throw new CifError(`cannot read symmetry operator "${spec}"`);
@@ -261,6 +280,21 @@ export function parseCif(text, name = "uploaded") {
   const gamma = cellOf("_cell_angle_gamma");
   if ([a, b, c, alpha, beta, gamma].some((v) => v === null || v <= 0))
     throw new CifError("the unit cell is missing or unreadable");
+  // The three angles must be able to meet at a corner, or no lattice exists:
+  // the same test physics.js applies when it builds B, made here so the file
+  // is refused at the door instead of failing inside a frame.
+  const cosA = Math.cos((alpha * Math.PI) / 180);
+  const cosB = Math.cos((beta * Math.PI) / 180);
+  const cosG = Math.cos((gamma * Math.PI) / 180);
+  const sinG = Math.sin((gamma * Math.PI) / 180);
+  const cy0 = (cosA - cosB * cosG) / sinG;
+  if (
+    [alpha, beta, gamma].some((v) => v >= 180) ||
+    1 - cosB * cosB - cy0 * cy0 <= 0
+  )
+    throw new CifError(
+      `cell angles ${alpha}, ${beta}, ${gamma} do not describe a real lattice`,
+    );
 
   // -- symmetry operators, from the file
   let ops = [
@@ -270,7 +304,7 @@ export function parseCif(text, name = "uploaded") {
       [0, 0, 1, 0],
     ],
   ];
-  const symLoop = loops.find((L) =>
+  let symLoop = loops.find((L) =>
     L.tags.some((t) =>
       /_(space_group_symop_operation_xyz|symmetry_equiv_pos_as_xyz)$/.test(t),
     ),
@@ -280,7 +314,10 @@ export function parseCif(text, name = "uploaded") {
       /_(space_group_symop_operation_xyz|symmetry_equiv_pos_as_xyz)$/.test(t),
     );
     const specs = symLoop.rows.map((r) => r[col]).filter(Boolean);
+    // A loop with the tag but no rows lists nothing, and is treated as no
+    // loop: it must not let a named symmetry through as though it were P1.
     if (specs.length) ops = specs.map(parseOperator);
+    else symLoop = null;
   }
 
   // Whether a symmetry is claimed and whether it is written as a readable
@@ -334,11 +371,15 @@ export function parseCif(text, name = "uploaded") {
 
   const sites = [];
   const unknown = new Set();
+  let skipped = 0;
   for (const r of atomLoop.rows) {
     const x = num(r[cx]),
       y = num(r[cy]),
       z = num(r[cz]);
-    if (x === null || y === null || z === null) continue;
+    if (x === null || y === null || z === null) {
+      skipped++; // a site with an unknown or unreadable position
+      continue;
+    }
     const sym = element(
       cType >= 0 ? r[cType] : null,
       cLabel >= 0 ? r[cLabel] : null,
@@ -377,8 +418,9 @@ export function parseCif(text, name = "uploaded") {
   // so the copies have to be merged or it scatters several times over. They
   // are compared with a tolerance and across the cell boundary, not by a
   // rounded key: two copies either side of a rounding step are the same atom.
-  // Different elements never merge, which is what keeps a site shared by a
-  // disordered C and N as the two contributions it physically is.
+  // Only copies of the same site merge. Two listed sites at one position, a
+  // disordered C and N or two half-occupied Pb, are the two contributions
+  // they physically are, and merging them would drop one's occupancy.
   const TOL = 1e-3;
   const near = (p, q) => {
     let s2 = 0;
@@ -391,12 +433,8 @@ export function parseCif(text, name = "uploaded") {
   };
 
   const atoms = [];
-  const byElement = new Map();
   for (const s of sites) {
-    // Keyed by nuclide, not element, so an H site and a D site at the same
-    // position stay the two distinct scatterers they are for neutrons.
-    const kept = byElement.get(s.nuc) || [];
-    byElement.set(s.nuc, kept);
+    const kept = [];
     for (const op of ops) {
       for (const t of centring) {
         const p = [0, 1, 2].map((i) => {
@@ -429,6 +467,7 @@ export function parseCif(text, name = "uploaded") {
     source: name,
     block: block.name || null,
     blocksInFile: withStructure.length,
+    skippedSites: skipped,
     spaceGroup: symbol && !/^P1$/i.test(symbol) ? symbol : null,
     cell: { a, b, c, alpha, beta, gamma },
     atoms,
