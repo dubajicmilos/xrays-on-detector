@@ -8,7 +8,7 @@ Checks:
      real MAPbBr3 CBF frames, corrections OFF.
   C. same, corrections ON with an identical per-pixel correction map.
 
-B/C need the I19-2 CBF frames on F: and a CUDA GPU (CuPy); they SKIP if absent.
+B/C need the I19-2 CBF frames and a CUDA GPU (CuPy); they SKIP if absent.
 """
 import os
 import sys

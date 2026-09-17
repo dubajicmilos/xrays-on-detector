@@ -5,17 +5,12 @@ six-circle diffractometer: given a CIF, a set of diffractometer angles, a
 detector (distance, size, pixel, arm angles) and a wavelength, compute which
 reflections are excited and where their spots land.
 
-It stitches together three existing pieces:
+It stitches together two existing pieces:
 
 | Role | Package |
 |------|---------|
 | Structure factors `|F(hkl)|²` and reciprocal lattice (2π convention) | **pytilting** `StructureFactorCalculator` |
 | Six-circle rotation matrices, You (1999) convention | **diffcalc-core** |
-| (optional) cross-checking reciprocal-space / area-detector conversions | xrayutilities |
-
-> Note: `escape-fel` was considered but is **not** used. It is a FEL
-> data-handling / lazy-array framework and carries no diffractometer or
-> detector geometry.
 
 ## Physics
 
@@ -59,6 +54,7 @@ so you only install what you actually use:
 | Extra | `pip install -e ".[extra]"` | For |
 |-------|------------------------------|-----|
 | `vdiff` | PyQt6, matplotlib, scipy | the virtual diffractometer app |
+| `singlecrystal` | PyQt6, matplotlib | the single-crystal CIF viewer app |
 | `data`  | fabio, h5py, scipy | reading real frames, writing volumes |
 | `cif`   | ase | symmetry expansion of a CIF |
 | `gpu`   | cupy | CUDA reconstruction (match your toolkit, e.g. `cupy-cuda12x`) |
@@ -78,7 +74,10 @@ no experimental data ships with the repository:
 | `XOD_NAME` | run stem, so frame *n* is `<XOD_RAW>/<XOD_NAME>_01_000n.cbf` |
 | `XOD_REF_H5` | reference rspace3d/CrysAlisPro volume to compare against |
 | `XOD_CIF` | CIF for the superlattice example |
-| `XOD_OUT` | output folder (default `./out` beside the script) |
+| `XOD_OUT` | output folder for the reconstruction and validation scripts (default `./out` beside the script); `demo.py` writes its two files next to itself |
+| `NFRAMES` | how many frames the GPU reconstruction scripts read (default 1750, lower it for a smoke test) |
+| `DATASET` | a CrysAlisPro run folder for `reconstruct_from_par.py` (frames plus the `.par`) |
+| `RSPACE3D_PATH` | checkout of [rspace3d](https://github.com/dubajicmilos/rspace3d), only for the symmetry operations in `validate_I19-2_realframe.py` |
 
 ## Usage
 
@@ -127,10 +126,11 @@ python -m xrays_on_detector.vdiff
 
 A PyQt6 app that puts the whole forward model behind a set of motors. The left
 column is the setup, the centre is a 3D view of the instrument, the right is the
-simulated frame. Needs only PyQt6 on top of the package requirements; the 3D is
-a small software renderer (QPainter, depth sort, near-plane clip) so there is no
-OpenGL dependency, and the live frame is projectively texture-mapped onto the
-detector face as the arm swings.
+simulated frame. Needs the `vdiff` extra (PyQt6, matplotlib for the colour
+maps, scipy for the omega solver); the 3D is a small software renderer
+(QPainter, depth sort, near-plane clip) so there is no OpenGL dependency, and
+the live frame is projectively texture-mapped onto the detector face as the arm
+swings.
 
 - **Detector presets**: PILATUS3 100K/300K/1M/2M/6M, EIGER2 X 1M/4M/9M/16M,
   LAMBDA 750K, JUNGFRAU 1M, or type in any pixel count and pitch. Distance,
@@ -213,9 +213,9 @@ asymmetric unit with 16 operators, ignoring the expansion puts (200) out by
 +353%, (101) by +71% and (211) by −26%. Here the expansion happens in the
 reader, and the sum runs over the full P1 cell.
 
-Verified against **pymatgen** — an independent CIF reader, symmetry expansion
-and form factor table — to better than 0.2 on a 0-100 intensity scale on every
-bundled structure and on rutile (`python tests/test_single_crystal.py`). The
+Verified against **pymatgen**, an independent CIF reader, symmetry expansion
+and form factor table, to within 1.2 on a 0-100 intensity scale on every
+bundled structure, the check allowing 2.0 (`python tests/test_single_crystal.py`). The
 JavaScript is held to the Python by `node web/test/parity_sc.mjs`, which agrees
 to ~1e-14 over 7008 section reflections, 124 SAED reflections and 3826 powder
 peaks.
@@ -259,7 +259,6 @@ Not yet (natural extensions):
 - structure factors ignore anomalous dispersion (f′, f″) and use isotropic B;
 - mosaic / anisotropic peak shapes, and polychromatic (Laue/pink) beam;
 - UB refinement from reference reflections (diffcalc can supply this).
-```
 
 ## Licence
 
@@ -268,13 +267,15 @@ MIT, see [LICENSE](LICENSE). The bundled Cromer-Mann coefficients under
 International Tables values, but check that provenance before redistributing
 them under a different licence.
 
-The neutron scattering lengths and electron scattering factors
-(`single_crystal/data/`, mirrored into `web/data/`) come from **pymatgen**,
-which is MIT-licensed like this project. `diffsims` ships a better electron
-table — the five-Gaussian Peng fit, which holds above s = 2 Å⁻¹ — but it is
-GPLv3, so its numbers are deliberately *not* vendored here. One entry, tin, was
-refitted: pymatgen's a₃ = 2.118 falls off the trend set by cadmium, indium and
-antimony, and made f_e(Sn) 10-14% low across the whole range while its
-neighbours agreed to 0.5%. `tools/export_scattering.py` detects that against
-the Mott-Bethe transform of the X-ray table, refits the coefficients, and
-refuses to write a table it cannot vouch for.
+The neutron scattering lengths (`single_crystal/data/`, mirrored into
+`web/data/`) come from **pymatgen**, which is MIT-licensed like this project.
+The electron scattering factors are the five-Gaussian fit of Peng, Ren, Dudarev
+and Whelan (1996, Acta Cryst. A52, 257), published as International Tables for
+Crystallography Vol. C, Table 4.3.2.3: physical constants, which carry no
+licence of their own. `tools/export_scattering.py` reads them from `diffsims`'
+transcription of that table (diffsims is GPLv3; none of its code is used or
+copied and it is not a dependency), checks every entry against the Mott-Bethe
+transform of the independent X-ray table, and refuses to write a table that
+fails the check. Nothing is refitted. The exporter can repair the older
+four-Gaussian Doyle-Turner table that pymatgen ships, whose tin entry is
+wrong, but that table is not the one used.

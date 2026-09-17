@@ -4,7 +4,8 @@ using the package's realframe API.
 Steps: read the detector geometry from the CBF header, index one frame's spots
 against the CrysAlisPro UB, cross-validate the rotation convention across frames
 at different phi, and overlay predicted Bragg positions on the measured frame.
-Edit the paths below for another dataset.
+The paths come from the environment (see below), so another dataset is a
+matter of setting them.
 """
 import os
 import numpy as np
@@ -26,7 +27,9 @@ if not (RAW and NAME and H5):
     sys.exit("set XOD_RAW, XOD_NAME and XOD_REF_H5; see the header of this file")
 STEM = os.path.join(RAW, NAME + "_01_{:04d}.cbf")
 OSC_AXIS = (0, 1, 0)      # oscillation axis in the lab frame (validated for this setup)
-OUT = os.path.dirname(os.path.abspath(__file__))
+OUT = os.environ.get(
+    "XOD_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
+os.makedirs(OUT, exist_ok=True)
 
 
 def load(frame_no):

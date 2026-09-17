@@ -72,7 +72,8 @@ def main():
     print(f"chosen eta = {eta} deg, {len(best.table)} spots on the panel")
     save_table(best.table, os.path.join(HERE, "reflections.csv"))
 
-    # Same crystal orientation, detector arm swung out in the horizontal plane.
+    # Same crystal orientation, detector arm swung up: delta turns about the
+    # horizontal axis, so it moves the panel vertically.
     det1 = Detector(distance=120.0, n_fast=1024, n_slow=1024, pixel_size=0.2,
                     delta=25.0)
     moved = simulate_frame(crystal, det1, wavelength, sigma, eta=eta,

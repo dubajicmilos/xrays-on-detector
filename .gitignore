@@ -10,6 +10,9 @@ venv/
 tools/_shots/
 tools/_video/
 
+# Editor and agent tooling.
+.claude/
+
 # Local-only assets kept out of the repository: never commit them.
 /Images/
 /Single crystal app/

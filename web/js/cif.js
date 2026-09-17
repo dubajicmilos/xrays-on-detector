@@ -13,43 +13,12 @@
  * Operators come from the file itself rather than a space-group table, which
  * covers essentially every CIF in the wild and keeps this honest: a listed
  * operator set is complete by definition, centring included, so it is used
- * exactly as given. Only a file with no operators at all falls back to the
- * Hermann-Mauguin symbol, and one naming a symmetry it does not spell out is
- * refused rather than quietly expanded into a structure that looks plausible.
+ * exactly as given. A file with no operators is taken as P1 only if it claims
+ * no other symmetry; one naming a symmetry it does not spell out is refused
+ * rather than quietly expanded into a structure that looks plausible.
  */
 
 export class CifError extends Error {}
-
-const CENTRING = {
-  P: [[0, 0, 0]],
-  I: [
-    [0, 0, 0],
-    [0.5, 0.5, 0.5],
-  ],
-  F: [
-    [0, 0, 0],
-    [0, 0.5, 0.5],
-    [0.5, 0, 0.5],
-    [0.5, 0.5, 0],
-  ],
-  A: [
-    [0, 0, 0],
-    [0, 0.5, 0.5],
-  ],
-  B: [
-    [0, 0, 0],
-    [0.5, 0, 0.5],
-  ],
-  C: [
-    [0, 0, 0],
-    [0.5, 0.5, 0],
-  ],
-  R: [
-    [0, 0, 0],
-    [2 / 3, 1 / 3, 1 / 3],
-    [1 / 3, 2 / 3, 2 / 3],
-  ],
-};
 
 /**
  * A CIF number: strip the estimated standard deviation, reject placeholders.
@@ -344,12 +313,8 @@ export function parseCif(text, name = "uploaded") {
         "it as P1 (VESTA, or ASE read/write) and load that.",
     );
 
-  // A file that lists operators lists all of them, centring included, so the
-  // symbol is only consulted when there are none to go on.
-  const letter = symbol
-    ? symbol.replace(/^[-+]/, "").charAt(0).toUpperCase()
-    : "P";
-  const centring = symLoop ? CENTRING.P : CENTRING[letter] || CENTRING.P;
+  // A file that lists operators lists all of them, centring included, and a
+  // file that reaches here without any is P1, so no centring is ever added.
 
   // -- atom sites
   const atomLoop = loops.find((L) =>
@@ -436,29 +401,25 @@ export function parseCif(text, name = "uploaded") {
   for (const s of sites) {
     const kept = [];
     for (const op of ops) {
-      for (const t of centring) {
-        const p = [0, 1, 2].map((i) => {
-          const row = op[i];
-          return wrap(
-            row[0] * s.x + row[1] * s.y + row[2] * s.z + row[3] + t[i],
-          );
-        });
-        if (kept.some((q) => near(p, q))) continue;
-        kept.push(p);
-        // Full precision. Rounding to six decimals costs nothing on a
-        // coordinate like 0.25 and 3e-7 on a hexagonal 1/3, which is enough to
-        // move |F|^2 by 1e-5 relative -- invisible on screen, but a needless
-        // disagreement with any other code.
-        atoms.push({
-          element: s.el,
-          nuclide: s.nuc,
-          x: p[0],
-          y: p[1],
-          z: p[2],
-          occ: s.occ,
-          B: s.B,
-        });
-      }
+      const p = [0, 1, 2].map((i) => {
+        const row = op[i];
+        return wrap(row[0] * s.x + row[1] * s.y + row[2] * s.z + row[3]);
+      });
+      if (kept.some((q) => near(p, q))) continue;
+      kept.push(p);
+      // Full precision. Rounding to six decimals costs nothing on a
+      // coordinate like 0.25 and 3e-7 on a hexagonal 1/3, which is enough to
+      // move |F|^2 by 1e-5 relative -- invisible on screen, but a needless
+      // disagreement with any other code.
+      atoms.push({
+        element: s.el,
+        nuclide: s.nuc,
+        x: p[0],
+        y: p[1],
+        z: p[2],
+        occ: s.occ,
+        B: s.B,
+      });
     }
   }
 

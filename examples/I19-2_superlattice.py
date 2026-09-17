@@ -26,7 +26,9 @@ CIF = os.environ.get("XOD_CIF", "")
 if not (RAW and NAME and H5 and CIF):
     sys.exit("set XOD_RAW, XOD_NAME, XOD_REF_H5 and XOD_CIF; see the header")
 CBF = os.path.join(RAW, NAME + "_01_0001.cbf")
-OUT = os.path.dirname(os.path.abspath(__file__))
+OUT = os.environ.get(
+    "XOD_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
+os.makedirs(OUT, exist_ok=True)
 
 # structure factors from the 2x2x2 pseudocubic CIF (super-index basis)
 PT = os.environ.get("PYTILTING_PATH", "")

@@ -34,6 +34,7 @@ H5_RAW = os.path.join(RAW, "unwarp", NAME + "_0_raw.h5")
 STEM = os.path.join(RAW, NAME + "_01_{:04d}.cbf")
 OUTDIR = os.environ.get(
     "XOD_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
+os.makedirs(OUTDIR, exist_ok=True)
 RANGE, STEP, NFRAMES = (-6.0, 6.0), 0.025, 1750
 WIN = 0.06            # +-rlu window for a node's peak
 MIN_COUNT = 10        # a node must have a voxel with >= this many contributing pixels

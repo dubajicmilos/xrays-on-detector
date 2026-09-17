@@ -60,6 +60,12 @@ class FlatDetector:
         pix_m = num("Pixel_size")
         bc = pair("Beam_xy")
         lam = num("Wavelength")
+        missing = [k for k, v in (("Detector_distance", dist_m), ("Pixel_size", pix_m),
+                                  ("Beam_xy", bc), ("Wavelength", lam)) if v is None]
+        if missing:
+            raise ValueError(
+                f"{path}: the CBF header lacks {', '.join(missing)}; this reader "
+                "expects a Dectris (Pilatus / Eiger) header")
         ny, nx = img.data.shape
         det = cls(distance=dist_m * 1e3, pixel_size=pix_m * 1e3,
                   beam_center=bc, shape=(ny, nx), wavelength=lam)

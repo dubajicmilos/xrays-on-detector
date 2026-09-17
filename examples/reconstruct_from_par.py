@@ -10,7 +10,7 @@ corrections, saves it in the rsp_viewer-compatible HDF5 layout, and (if the
 dataset has an unwarp/..._raw.h5) validates against it (integer-Bragg
 registration + Bragg-node intensity correlation + HK-plane comparison).
 
-Point it at any dataset with DATASET=<folder>; defaults to 148 (221 K).
+Point it at any dataset with DATASET=<folder>.
 """
 import os
 import sys
@@ -43,6 +43,8 @@ os.makedirs(OUTDIR, exist_ok=True)
 name = os.path.basename(os.path.normpath(FOLDER))
 stem = os.path.join(FOLDER, name + "_01_{:04d}.cbf")
 par = find_crysalis_par(FOLDER)
+if par is None:
+    sys.exit(f"no CrysAlisPro .par found in {FOLDER}")
 print(f"dataset {name}\n  par  = {os.path.basename(par)}", flush=True)
 
 # ---- geometry + UB (par) + R0 (index frame 1) ----
