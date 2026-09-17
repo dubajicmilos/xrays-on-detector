@@ -104,13 +104,21 @@ function recompute() {
     }
   } catch (err) {
     result = null;
+    lastError = err.message;
     view.message(err.message, "#f0725a");
     status.className = "bad";
     status.textContent = err.message;
+    // nothing on the canvas belongs to the previous result any more
+    $("title").textContent = "";
+    $("hover").textContent = "";
     return;
   }
+  lastError = null;
   draw();
 }
+
+/** The message on the canvas when there is no result, redrawn on resize. */
+let lastError = null;
 
 function draw() {
   if (!result) return;
@@ -177,15 +185,36 @@ function writeOverlay() {
     if (st.zones > 0 && first && first > result.qMax) {
       status.className = "warn";
       status.textContent =
-        `the first Laue ring is at ${first.toFixed(1)} Å⁻¹, outside d min ` +
-        `— set d min to ${((2 * Math.PI) / first).toFixed(3)} Å to reach it`;
+        `the first Laue ring is at ${first.toFixed(1)} Å⁻¹, outside d min: ` +
+        `set d min to ${((2 * Math.PI) / first).toFixed(3)} Å to reach it`;
     } else {
       status.textContent =
         `kinematic, sinc² relrod` +
         `   ·   ${result.zonesVisible} of ${result.zoneRadii.length} Laue zones in range` +
         `   ·   dynamical scattering is not modelled`;
+      // The outer zones are orders of magnitude weaker than the zero layer,
+      // so on a linear stretch they sit below the drawing threshold and the
+      // rings asked for never appear. Say so rather than show a plain section.
+      if (st.zones > 0 && result.zonesVisible > 1 && !st.log && holzHidden()) {
+        status.className = "warn";
+        status.textContent +=
+          "   ·   the outer zones are too faint for a linear stretch: tick " +
+          "log intensity or raise the contrast";
+      }
     }
   }
+}
+
+/** True when no reflection outside the zero layer reaches the draw threshold. */
+function holzHidden() {
+  let top = 0;
+  for (let i = 0; i < result.count; i++)
+    top = Math.max(top, result.intensity[i]);
+  if (!(top > 0)) return true;
+  for (let i = 0; i < result.count; i++)
+    if (result.laueZone[i] > 0 && (result.intensity[i] * st.gain) / top > 1e-3)
+      return false;
+  return true;
 }
 
 // ------------------------------------------------------------ structures
@@ -212,6 +241,11 @@ function applyStructure(doc) {
   const notes = [];
   if (doc.blocksInFile > 1)
     notes.push(`${doc.blocksInFile} structures in the file; using the first`);
+  if (doc.skippedSites)
+    notes.push(
+      `${doc.skippedSites} atom ${doc.skippedSites === 1 ? "site" : "sites"} ` +
+        "without a readable position skipped",
+    );
   const species = [...new Set(structure.nuclides)];
   if (species.includes("D") || species.includes("T"))
     notes.push("D and T keep their own neutron scattering lengths");
@@ -222,6 +256,9 @@ function applyStructure(doc) {
 async function onFile(file) {
   try {
     const doc = parseCif(await file.text(), file.name.replace(/\.cif$/i, ""));
+    // A structure joins the list only once it is known to build; a dead
+    // entry that fails again every time it is picked helps nobody.
+    new Structure(doc);
     structures.push(doc);
     const opt = document.createElement("option");
     opt.value = String(structures.length - 1);
@@ -244,7 +281,8 @@ async function onFile(file) {
 function stem() {
   const base = structure ? structure.name.replace(/[^\w.-]+/g, "_") : "pattern";
   if (st.mode === "powder") return `${base}_powder_${st.radiation}`;
-  const z = st.uvw.join("");
+  // the reduced zone, with separators: [1 -1 0] must not read as 1-10
+  const z = `[${(result ? result.uvw : st.uvw).join(",")}]`;
   if (st.mode === "saed") return `${base}_saed_${z}`;
   return `${base}_zone${z}_n${st.layer}_${st.radiation}`;
 }
@@ -401,8 +439,17 @@ function bindZoom() {
 
 function syncRows() {
   const show = (id, on) => $(id).classList.toggle("hidden", !on);
-  show("grpZone", st.mode !== "powder");
+  const powder = st.mode === "powder";
+  show("grpZone", !powder);
   show("rowLayer", st.mode === "section");
+  // A powder trace sets its own d min from the 2θ limit and draws lines, not
+  // spots, so the controls that would do nothing are not offered.
+  show("rowDmin", !powder);
+  show("rowGain", !powder);
+  show("rowSpot", !powder);
+  show("chkLog", !powder);
+  show("chkRings", st.mode === "saed");
+  show("rowColours", !powder);
   show("rowWavelength", st.mode === "powder" && st.radiation !== "electron");
   show(
     "rowKv",
@@ -422,10 +469,14 @@ function syncRows() {
 }
 
 function bind() {
+  // A box whose min is above zero holds a quantity that must stay positive
+  // (a wavelength, a voltage, a thickness); a non-positive entry is left in
+  // the box while it is typed and not applied.
   const num = (id, key, after) =>
     $(id).addEventListener("input", () => {
       const v = parseFloat($(id).value);
       if (!Number.isFinite(v)) return;
+      if (parseFloat($(id).min) > 0 && !(v > 0)) return;
       st[key] = v;
       after?.();
       recompute();
@@ -459,8 +510,8 @@ function bind() {
 
   for (const [i, id] of ["zu", "zv", "zw"].entries())
     $(id).addEventListener("input", () => {
-      const v = parseInt($(id).value, 10);
-      if (!Number.isFinite(v)) return;
+      const v = Number($(id).value);
+      if (!Number.isInteger(v)) return;
       st.uvw[i] = v;
       recompute();
     });
@@ -488,7 +539,12 @@ function bind() {
     if (!Number.isFinite(v)) return;
     st.zones = v;
     if (structure && v > 0) {
-      const need = dMinForZone(structure, st.uvw, v, st.kv);
+      let need = Infinity;
+      try {
+        need = dMinForZone(structure, st.uvw, v, st.kv);
+      } catch {
+        // an unusable zone axis: recompute() reports it
+      }
       if (Number.isFinite(need) && need < st.dMin) {
         st.dMin = need;
         $("dmin").value = need.toFixed(3);
@@ -545,6 +601,7 @@ function bind() {
   });
 
   $("savePng").addEventListener("click", () => {
+    if (!result) return;
     view.canvas.toBlob((b) => b && download(stem() + ".png", b));
   });
   $("saveTable").addEventListener("click", saveTable);
@@ -580,7 +637,10 @@ function bind() {
     () => ($("hover").textContent = ""),
   );
 
-  new ResizeObserver(() => draw()).observe($("stage"));
+  new ResizeObserver(() => {
+    if (result) draw();
+    else if (lastError) view.message(lastError, "#f0725a");
+  }).observe($("stage"));
 }
 
 // ------------------------------------------------------------------- boot
@@ -651,8 +711,15 @@ async function boot() {
 }
 
 boot().catch((err) => {
-  const b = $("boot");
+  const b =
+    $("boot") || document.body.appendChild(document.createElement("div"));
+  b.id = "boot";
   b.className = "err";
-  b.textContent = `${err.message}\n\nServe this folder over http, not file://`;
+  const hint =
+    location.protocol === "file:"
+      ? "You opened this file directly; serve it over http instead " +
+        "(ES modules and fetch do not work from file://)."
+      : "Reload the page; if it keeps failing, the message above says what broke.";
+  b.textContent = `Failed to start.\n\n${err.message}\n\n${hint}`;
   console.error(err);
 });

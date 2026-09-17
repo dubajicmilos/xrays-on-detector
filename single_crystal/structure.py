@@ -172,5 +172,6 @@ class Structure:
             f"{self.name}{sg}\n"
             f"a {a:.4f}  b {b:.4f}  c {c:.4f} Å\n"
             f"α {al:.3f}  β {be:.3f}  γ {ga:.3f}°\n"
-            f"V {self.volume:.2f} Å³   {len(self.frac)} atoms in P1"
+            f"V {self.volume:.2f} Å³   {len(self.frac)} "
+            f"{'atom' if len(self.frac) == 1 else 'atoms'} in P1"
         )
