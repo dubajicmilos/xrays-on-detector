@@ -32,6 +32,12 @@ RADIATION_LABEL = {
     "neutron": "Neutrons",
     "electron": "Electrons",
 }
+#: The same, as the adjective a message wants: "no neutron scattering data".
+RADIATION_ADJECTIVE = {
+    "xray": "X-ray",
+    "neutron": "neutron",
+    "electron": "electron",
+}
 #: What |F|^2 is measured in, per radiation. Shown in the UI so a number
 #: copied out of the app carries its unit.
 UNITS = {"xray": "e", "neutron": "fm", "electron": "Å"}
@@ -107,7 +113,7 @@ def factors(radiation: str, symbols, s) -> np.ndarray:
     missing = missing_for(radiation, symbols)
     if missing:
         raise KeyError(
-            f"no {RADIATION_LABEL[radiation].lower()} scattering data for "
+            f"no {RADIATION_ADJECTIVE[radiation]} scattering data for "
             + ", ".join(missing[:6])
         )
 

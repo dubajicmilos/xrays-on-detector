@@ -30,6 +30,12 @@ export const RADIATION_LABEL = {
   neutron: "Neutrons",
   electron: "Electrons",
 };
+/** The same, as the adjective a message wants: "no neutron scattering data". */
+export const RADIATION_ADJECTIVE = {
+  xray: "X-ray",
+  neutron: "neutron",
+  electron: "electron",
+};
 
 /** What |F|^2 is measured in, so a number copied out carries its unit. */
 export const UNITS = { xray: "e", neutron: "fm", electron: "Å" };
@@ -75,7 +81,7 @@ export function factor(radiation, symbol, s) {
   const e = table && table[symbol];
   if (e === undefined) {
     throw new Error(
-      `no ${RADIATION_LABEL[radiation].toLowerCase()} scattering data for ${symbol}`,
+      `no ${RADIATION_ADJECTIVE[radiation]} scattering data for ${symbol}`,
     );
   }
   if (radiation === "neutron") return e;
