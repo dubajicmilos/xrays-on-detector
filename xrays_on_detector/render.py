@@ -21,7 +21,10 @@ def polarization(two_theta: np.ndarray, mode: str = "unpolarized",
 
     'unpolarized' : (1 + cos^2 2theta) / 2
     'none'        : 1
-    'horizontal'  : synchrotron beam polarized along lab x; 1 - (khat_x)^2
+    'horizontal'  : synchrotron beam polarized in the horizontal plane, i.e.
+                    along lab z (lab x is the vertical); 1 - (khat_z)^2. A
+                    reflection scattered horizontally is attenuated, one
+                    scattered vertically is not.
     """
     if mode == "none":
         return np.ones_like(two_theta)
@@ -30,7 +33,7 @@ def polarization(two_theta: np.ndarray, mode: str = "unpolarized",
     if mode == "horizontal":
         if khat is None:
             raise ValueError("horizontal polarization needs khat")
-        return 1.0 - khat[:, 0] ** 2
+        return 1.0 - khat[:, 2] ** 2
     raise ValueError(f"unknown polarization mode {mode!r}")
 
 
@@ -41,7 +44,7 @@ def render(detector, refl, wavelength, sigma, *, polarization_mode="unpolarized"
     Returns
     -------
     image : (n_slow, n_fast) ndarray
-        Row 0 is the top of the detector (+z downwards in array rows).
+        Row 0 is the top of the detector (the slow axis runs up the rows).
     table : list of dict
         Per-rendered-reflection record (hkl, pixel, eps, 2theta, intensity).
     """
@@ -77,7 +80,7 @@ def _add_gaussian(image, cx, cy, s_px, total, n_sigma=4.0):
     """Add a normalised 2D Gaussian (integral = total) centred at (cx, cy).
 
     cx indexes the fast (column) axis, cy the slow axis. The slow axis is
-    written top-down so +z (up) maps to decreasing row index.
+    written top-down, so a larger slow coordinate maps to a smaller row index.
     """
     n_slow, n_fast = image.shape
     rad = int(np.ceil(n_sigma * s_px))

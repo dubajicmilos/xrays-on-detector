@@ -63,7 +63,11 @@ class LabDetector(Detector):
 
     def binned(self, factor: int) -> "LabDetector":
         """A geometrically identical detector with `factor` x `factor` pixels
-        merged, for fast preview rendering."""
+        merged, for fast preview rendering.
+
+        Pixel coordinates are pixel centres, so unbinned pixel ``c`` sits at
+        ``(c + 0.5) / factor - 0.5`` in the binned frame; ``c / factor`` would
+        shift the whole image by ``(factor - 1) / 2`` unbinned pixels."""
         if factor <= 1:
             return self
         return LabDetector(
@@ -73,8 +77,8 @@ class LabDetector(Detector):
             pixel_size=self.pixel_size * factor,
             nu=self.nu,
             delta=self.delta,
-            beam_center_fast=self.beam_center_fast / factor,
-            beam_center_slow=self.beam_center_slow / factor,
+            beam_center_fast=(self.beam_center_fast + 0.5) / factor - 0.5,
+            beam_center_slow=(self.beam_center_slow + 0.5) / factor - 0.5,
         )
 
 

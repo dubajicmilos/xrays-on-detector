@@ -249,12 +249,33 @@ def build_fixture(structure_doc):
         dirs.append(d / np.linalg.norm(d))
     dirs = np.array(dirs)
     f_px, s_px, inside, cos_inc = det.project(dirs)
+    # The panel's reach at arm positions where the largest 2theta is at a
+    # corner, on an edge, and at the back direction, with the beam centre both
+    # centred and off-centre.
+    reach = []
+    for nu, delta, bc in [(8.5, -12.25, None), (0.0, 60.0, None),
+                          (0.0, 120.0, None), (0.0, 160.0, None),
+                          (120.0, 0.0, (100.0, 100.0)),
+                          (45.0, 135.0, (1400.0, 50.0)),
+                          (-100.0, 160.0, (1400.0, 50.0))]:
+        kw = {} if bc is None else {"beam_center_fast": bc[0],
+                                    "beam_center_slow": bc[1]}
+        d = LabDetector(distance=200.0, n_fast=1475, n_slow=1679,
+                        pixel_size=0.172, nu=nu, delta=delta, **kw)
+        reach.append({"nu": nu, "delta": delta, "beamCenter": bc,
+                      "maxQmax": float(d.max_Qmax(0.7293))})
+    b4 = det.binned(4)
     fx["detector"] = {
         "spec": {"distance": 200.0, "nFast": 1475, "nSlow": 1679,
                  "pixelSize": 0.172, "nu": 8.5, "delta": -12.25},
         "centre": _v(centre), "normal": _v(normal),
         "eFast": _v(e_fast), "eSlow": _v(e_slow), "arm": _v(arm),
         "maxQmax": float(det.max_Qmax(0.7293)),
+        "reach": reach,
+        "binned4": {"nFast": int(b4.n_fast), "nSlow": int(b4.n_slow),
+                    "pixelSize": float(b4.pixel_size),
+                    "beamCenterFast": float(b4.beam_center_fast),
+                    "beamCenterSlow": float(b4.beam_center_slow)},
         "rays": [{"khat": _v(d), "fast": float(f), "slow": float(s),
                   "inside": bool(i), "cosInc": float(c)}
                  for d, f, s, i, c in zip(dirs, f_px, s_px, inside, cos_inc)],
@@ -270,6 +291,9 @@ def build_fixture(structure_doc):
     shot = inst.shoot(bin_factor=1)
     order = np.lexsort((shot.refl.hkl[:, 2], shot.refl.hkl[:, 1],
                         shot.refl.hkl[:, 0]))
+    from xrays_on_detector.render import polarization
+    pol = {mode: polarization(shot.refl.two_theta, mode, shot.refl.khat)
+           for mode in ("horizontal", "unpolarized")}
     fx["ewald"] = {
         "cell": [5.917, 5.917, 5.917, 90, 90, 90],
         "wavelength": 0.7293, "sigma": inst.sigma, "nSigma": inst.n_sigma,
@@ -281,7 +305,8 @@ def build_fixture(structure_doc):
              "khat": _v(shot.refl.khat[i]),
              "eps": float(shot.refl.eps[i]),
              "excitation": float(shot.refl.excitation[i]),
-             "twoTheta": float(shot.refl.two_theta[i])}
+             "twoTheta": float(shot.refl.two_theta[i]),
+             "polarization": {mode: float(pol[mode][i]) for mode in pol}}
             for i in order
         ],
     }
