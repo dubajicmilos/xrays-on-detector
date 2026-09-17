@@ -38,13 +38,23 @@ const POSTER_FACE = 'Impact, "Arial Black", "Haettenschweiler", sans-serif';
 const PX_PER_MM = 3.5; // keeps a 560 x 370 board just under a 2048 px texture
 const FRAME = 16; // mm of aluminium surround
 
-/** Written on the board. The physics the simulator actually runs on. */
+/**
+ * Written on the board. The physics the simulator actually runs on, in the
+ * order it runs on it: what Q is, elastic scattering, the geometry, the
+ * lattice, and then the diffraction condition with Bragg's law as its
+ * consequence. The order n is absorbed into hkl (d is d_hkl), as in the code.
+ * Five lines at 16 mm on a 22 mm pitch is what fits above y = 200 and short
+ * of the posters at x = 240; measured, see the note below.
+ */
 const EQUATIONS = [
-  "n λ = 2 d sin θ",
-  "|Q| = 4π sin θ / λ",
-  "Q = h a* + k b* + l c*",
-  "|k| = 2π / λ",
+  "Q = k′ − k",
+  "|k| = |k′| = 2π / λ",
+  "|Q| = (4π/λ) sin θ",
+  "G = h a* + k b* + l c*",
+  "Q = G  ⇒  λ = 2d sin θ",
 ];
+const EQ_SIZE = 16; // mm
+const EQ_PITCH = 22; // mm between baselines
 
 /**
  * The two posters, pinned to the right of the writing. Widths are in mm on the
@@ -204,10 +214,10 @@ function drawBoard(c, lengthMm, heightMm, loaded) {
 
   // Marker colours, alternating the way a board actually gets written on.
   const ink = ["#17224a", "#a8341f", "#17224a", "#1c6444"];
-  g.font = `${px(18)}px ${HAND}`;
+  g.font = `${px(EQ_SIZE)}px ${HAND}`;
   EQUATIONS.forEach((eq, i) => {
     g.fillStyle = ink[i % ink.length];
-    g.fillText(eq, px(left), px(106 + i * 27));
+    g.fillText(eq, px(left), px(100 + i * EQ_PITCH));
   });
 
   // Half-wiped marker low down, where the board is read through the circles.
