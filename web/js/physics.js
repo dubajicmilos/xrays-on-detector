@@ -179,13 +179,31 @@ export function crystalVector(B, indices, kind = "hkl") {
   throw new Error(`kind must be 'hkl' or 'uvw', got ${kind}`);
 }
 
+/**
+ * How many reciprocal-lattice points a sphere of radius Qmax holds: its
+ * volume over the reciprocal cell volume |det B|. Exact enough to size a
+ * buffer or to refuse an enumeration before it starts.
+ */
+export function hklCountEstimate(B, Qmax) {
+  return ((4 / 3) * Math.PI * Qmax ** 3) / Math.abs(det3(B));
+}
+
+/** The Qmax at which hklCountEstimate reaches `count`: the inverse of it. */
+export function qmaxForCount(B, count) {
+  return Math.cbrt((3 * count * Math.abs(det3(B))) / (4 * Math.PI));
+}
+
 /** All integer hkl (excluding 000) with |B . hkl| <= Qmax, as a flat Int32Array. */
 export function hklWithinQmax(B, Qmax) {
   const Binv = inv3(B);
   const bound = Binv.map(
     (row) => Math.ceil(Qmax * Math.hypot(row[0], row[1], row[2])) + 1,
   );
-  const out = [];
+  // Sized from the sphere volume rather than grown as it fills: a growable
+  // array of 3N doubles is several times the final Int32Array.
+  let cap = Math.ceil(1.05 * hklCountEstimate(B, Qmax)) + 64;
+  let out = new Int32Array(3 * cap);
+  let n = 0;
   for (let h = -bound[0]; h <= bound[0]; h++)
     for (let k = -bound[1]; k <= bound[1]; k++)
       for (let l = -bound[2]; l <= bound[2]; l++) {
@@ -193,9 +211,19 @@ export function hklWithinQmax(B, Qmax) {
         const qx = B[0][0] * h + B[0][1] * k + B[0][2] * l;
         const qy = B[1][0] * h + B[1][1] * k + B[1][2] * l;
         const qz = B[2][0] * h + B[2][1] * k + B[2][2] * l;
-        if (Math.hypot(qx, qy, qz) <= Qmax) out.push(h, k, l);
+        if (Math.hypot(qx, qy, qz) > Qmax) continue;
+        if (n === cap) {
+          cap *= 2;
+          const bigger = new Int32Array(3 * cap);
+          bigger.set(out);
+          out = bigger;
+        }
+        out[3 * n] = h;
+        out[3 * n + 1] = k;
+        out[3 * n + 2] = l;
+        n++;
       }
-  return Int32Array.from(out);
+  return out.slice(0, 3 * n);
 }
 
 /** Q in the crystal Cartesian frame for a flat hkl array, as a flat Float64Array. */
@@ -242,17 +270,35 @@ export function structureFactors(table, atoms, B, hkl) {
   const n = hkl.length / 3;
   const out = new Float64Array(n);
   const Q = qCryst(B, hkl);
+
+  // f(s) depends only on the element, so it is evaluated once per element and
+  // reflection rather than once per atom: a 188-atom cell has five elements.
+  const symbols = [];
+  const kind = new Int32Array(atoms.length);
+  const occ = new Float64Array(atoms.length);
+  const Biso = new Float64Array(atoms.length);
+  atoms.forEach((at, j) => {
+    let e = symbols.indexOf(at.element);
+    if (e < 0) e = symbols.push(at.element) - 1;
+    kind[j] = e;
+    occ[j] = at.occ === undefined ? 1 : at.occ;
+    Biso[j] = at.B || 0;
+  });
+  const f = new Float64Array(symbols.length);
+
   for (let i = 0; i < n; i++) {
     const s = Math.hypot(Q[3 * i], Q[3 * i + 1], Q[3 * i + 2]) / (4 * Math.PI);
+    const s2 = s * s;
+    for (let e = 0; e < symbols.length; e++)
+      f[e] = scatteringFactor(table, symbols[e], s);
     const h = hkl[3 * i],
       k = hkl[3 * i + 1],
       l = hkl[3 * i + 2];
     let re = 0,
       im = 0;
-    for (const at of atoms) {
-      const f = scatteringFactor(table, at.element, s);
-      const T = Math.exp(-(at.B || 0) * s * s);
-      const w = (at.occ === undefined ? 1 : at.occ) * f * T;
+    for (let j = 0; j < atoms.length; j++) {
+      const at = atoms[j];
+      const w = occ[j] * f[kind[j]] * Math.exp(-Biso[j] * s2);
       const ph = TWO_PI * (h * at.x + k * at.y + l * at.z);
       re += w * Math.cos(ph);
       im += w * Math.sin(ph);

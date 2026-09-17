@@ -15,7 +15,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>Diffraction Game</title>
+    <title>The Game of Diffraction</title>
     <meta
       name="description"
       content="Interactive six-circle single-crystal diffraction simulator: drive the motors, watch the Bragg spots land on the detector."
@@ -26,13 +26,17 @@
       rel="license"
       href="https://github.com/dubajicmilos/xrays-on-detector/blob/main/LICENSE"
     />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b0e18'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%2378e6ff'/%3E%3Ccircle cx='14' cy='32' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='50' cy='32' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='32' cy='14' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='32' cy='50' r='3.5' fill='%2378e6ff' opacity='.8'/%3E%3Ccircle cx='18' cy='18' r='2' fill='%2378e6ff' opacity='.45'/%3E%3Ccircle cx='46' cy='18' r='2' fill='%2378e6ff' opacity='.45'/%3E%3Ccircle cx='18' cy='46' r='2' fill='%2378e6ff' opacity='.45'/%3E%3Ccircle cx='46' cy='46' r='2' fill='%2378e6ff' opacity='.45'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="css/app.css" />
   </head>
   <body>
     <div id="app">
       <aside id="panel">
         <header class="brand">
-          <h1>Diffraction Game</h1>
+          <h1>The Game of Diffraction</h1>
           <p>A six-circle diffractometer in your browser.</p>
         </header>
 
@@ -40,10 +44,13 @@
           <h2>Beam and detector</h2>
           <div class="row">
             <label>Wavelength</label
-            ><input type="number" id="wl" step="0.01" min="0.05" max="6" /><span
-              class="u"
-              >Å</span
-            >
+            ><input
+              type="number"
+              id="wl"
+              step="0.01"
+              min="0.05"
+              max="6.2"
+            /><span class="u">Å</span>
           </div>
           <div class="row">
             <label>Energy</label
@@ -52,7 +59,7 @@
               id="energy"
               step="0.1"
               min="2"
-              max="250"
+              max="247"
             /><span class="u">keV</span>
           </div>
           <div class="row">
@@ -61,30 +68,37 @@
           </div>
           <div class="row">
             <label>Pixel size</label
-            ><input type="number" id="pixel" step="0.001" min="0.005" /><span
-              class="u"
-              >mm</span
-            >
+            ><input
+              type="number"
+              id="pixel"
+              step="0.001"
+              min="0.005"
+              max="10"
+            /><span class="u">mm</span>
           </div>
           <div class="row">
             <label>Pixels h×v</label
-            ><input type="number" id="nFast" step="1" min="16" /><input
+            ><input
               type="number"
-              id="nSlow"
+              id="nFast"
               step="1"
               min="16"
-            />
+              max="16384"
+            /><input type="number" id="nSlow" step="1" min="16" max="16384" />
           </div>
           <div class="row">
             <label>Distance</label
-            ><input type="number" id="distance" step="1" min="20" /><span
-              class="u"
-              >mm</span
-            >
+            ><input
+              type="number"
+              id="distance"
+              step="1"
+              min="20"
+              max="100000"
+            /><span class="u">mm</span>
           </div>
           <div class="row">
             <label>Preview bin</label
-            ><input type="number" id="bin" step="1" min="1" max="16" />
+            ><input type="number" id="bin" step="1" min="1" max="64" />
           </div>
         </section>
 
@@ -146,7 +160,9 @@
 
         <section class="grp">
           <h2>Crystal orientation</h2>
-          <p class="hint">Free rotation about the lab axes</p>
+          <p class="hint">
+            Tilt the crystal on its mount (rotations in the phi frame)
+          </p>
           <div id="rotRows"></div>
           <p class="hint">Point a crystal direction somewhere</p>
 
@@ -239,8 +255,15 @@
           <div id="motorRows"></div>
           <div class="row">
             <label>Speed</label>
-            <input type="number" id="speed" step="0.1" value="0.5" />
-            <span class="u">°/frame</span>
+            <input
+              type="number"
+              id="speed"
+              step="1"
+              value="30"
+              min="-720"
+              max="720"
+            />
+            <span class="u">°/s</span>
           </div>
           <div class="alignline">
             <button id="stopAll" class="grow">Stop all</button>

@@ -1,4 +1,4 @@
-# Diffraction Game (browser build)
+# The Game of Diffraction (browser build)
 
 A client-side port of the `xrays_on_detector` simulator: a six-circle
 diffractometer you drive in a browser. Everything runs in the visitor's tab, so
@@ -22,12 +22,19 @@ physics is only ~700 lines of linear algebra. Porting the physics too buys a
 | `js/render.js` | frame rendering (Gaussian spots), colour mapping, ray geometry |
 | `js/scene.js` | Three.js scene, own orbit/pinch controls |
 | `js/app.js` | state, controls, the simulate loop |
+| `js/cif.js` | CIF reader with symmetry expansion to P1, shared with `sc/` |
+| `js/scatter.js` | scattering tables for X-rays, neutrons and electrons (used by `sc/`) |
+| `js/credit.js` | the authorship notice, on screen and in the console |
+| `sc/` | the single-crystal viewer (sections, SAED, powder), a sibling page |
+| `img/` | poster images for the two pages |
 | `lib/three.module.js` | vendored Three.js r169 (see the naming note below) |
-| `data/*.json` | generated: form factors, colour maps, bundled structures |
-| `test/parity.mjs` | Node harness comparing the JS against Python fixtures |
+| `data/*.json` | generated: form factors, colour maps, bundled structures, neutron and electron tables |
+| `test/parity.mjs`, `test/parity_sc.mjs` | Node harnesses comparing the JS against Python fixtures |
 
-`../tools/export_web_data.py` generates everything under `data/` and
-`test/fixture.json`. `../tools/deploy_to_site.py` syncs this folder into the
+`../tools/export_web_data.py` generates the X-ray form factors, colour maps,
+bundled structures and `test/fixture.json`; `../tools/export_scattering.py`
+the neutron and electron tables; `../tools/export_sc_fixture.py`
+`test/fixture_sc.json`. `../tools/deploy_to_site.py` syncs this folder into the
 Jekyll site. `../tools/devserver.py` serves it locally with a screenshot sink.
 
 ### The folder is `lib/`, not `vendor/`
@@ -56,14 +63,16 @@ instrument from the console.
 
 ```bash
 python tools/export_web_data.py    # regenerate fixtures from the Python
-node web/test/parity.mjs           # 27 groups, JS vs Python
+node web/test/parity.mjs           # 30 groups, JS vs Python
+node web/test/parity_sc.mjs        # the single-crystal viewer
 ```
 
 The harness compares circle matrices, B matrices, `|F(hkl)|²` against pytilting,
-the detector frame and projection, a full Ewald pass (identical hkl, `khat`,
-`eps`, excitation, 2θ), `rotationBetween`/`eulerMatrix`, the align tools, UB in
-all three conventions, and every solver. Largest deviation anywhere is 2e-10,
-which is the bisection tolerance; the rest sit at machine precision.
+the detector frame, projection, reach and binning, a full Ewald pass (identical
+hkl, `khat`, `eps`, excitation, 2θ, polarization), `rotationBetween`/`eulerMatrix`,
+the align tools, UB in all three conventions, and every solver. Largest
+deviation anywhere is 2e-10, which is the bisection tolerance; the rest sit at
+machine precision.
 
 Terser-minified output was checked through the same harness and still passes, so
 the site's build step does not change the numbers.
@@ -99,8 +108,7 @@ straight from pytilting so the JS cannot drift from it.
 
 ## Still open
 
-- Mobile pass: the responsive CSS is written but untested on a real narrow viewport.
-- A short in-page guide for visitors who have never seen a diffractometer.
 - Pane balance: inside a 1345 px iframe the 3D view only gets ~492 px, because
   the control panel takes 396 and the detector pane 34vw.
-- CIF upload (needs a JS CIF parser plus symmetry expansion).
+- Touch: the panes take single-pointer drags and the 3D view pinches, but the
+  detector pane has no pinch zoom.
