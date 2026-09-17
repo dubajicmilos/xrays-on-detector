@@ -14,7 +14,11 @@
  */
 
 import { bMatrix, inv3, TWO_PI } from "../../js/physics.js";
-import { factorsAt, missingFor, RADIATION_LABEL } from "../../js/scatter.js";
+import {
+  factorsAt,
+  missingFor,
+  RADIATION_ADJECTIVE,
+} from "../../js/scatter.js";
 
 export class Structure {
   /**
@@ -82,7 +86,7 @@ export class Structure {
     const missing = missingFor(radiation, this._species(radiation).uniq);
     if (missing.length)
       throw new Error(
-        `no ${RADIATION_LABEL[radiation].toLowerCase()} scattering data for ` +
+        `no ${RADIATION_ADJECTIVE[radiation]} scattering data for ` +
           missing.slice(0, 6).join(", "),
       );
   }
