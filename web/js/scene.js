@@ -141,7 +141,8 @@ class Orbit {
 
     if (this._pointers.size === 2) {
       const d = this._pinchDistance();
-      if (this._pinch > 0) this.zoom(this._pinch / d);
+      // two fingers on one spot give d = 0, which would zoom to infinity
+      if (this._pinch > 0 && d > 0) this.zoom(this._pinch / d);
       this._pinch = d;
       return;
     }
@@ -759,12 +760,37 @@ export class InstrumentScene {
       return;
     }
     obj.visible = true;
-    const attr = obj.geometry.attributes.position;
-    if (attr.array.length < data.length) {
-      obj.geometry.setAttribute(
+    // Buffers that have grown too small are replaced together with their
+    // geometry: the renderer releases an attribute's GPU copy only when the
+    // geometry it belongs to is disposed, so swapping the attribute alone
+    // would leave the old buffer allocated.
+    const posOld = obj.geometry.attributes.position;
+    const colOld = obj.geometry.attributes.color;
+    const needCol = colours ? colours.length : 0;
+    if (
+      posOld.array.length < data.length ||
+      (colours && (!colOld || colOld.array.length < needCol))
+    ) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute(
         "position",
-        new THREE.BufferAttribute(new Float32Array(data.length), 3),
+        new THREE.BufferAttribute(
+          new Float32Array(Math.max(data.length, posOld.array.length)),
+          3,
+        ),
       );
+      if (colours || colOld)
+        g.setAttribute(
+          "color",
+          new THREE.BufferAttribute(
+            new Float32Array(
+              Math.max(needCol, colOld ? colOld.array.length : 0),
+            ),
+            3,
+          ),
+        );
+      obj.geometry.dispose();
+      obj.geometry = g;
     }
     const a = obj.geometry.attributes.position;
     a.array.set(data);
@@ -774,13 +800,6 @@ export class InstrumentScene {
     // its opacity from the material, so brightness is carried in the colour
     // itself, which reads the same way against this dark background.
     if (colours) {
-      const existing = obj.geometry.attributes.color;
-      if (!existing || existing.array.length < colours.length) {
-        obj.geometry.setAttribute(
-          "color",
-          new THREE.BufferAttribute(new Float32Array(colours.length), 3),
-        );
-      }
       const c = obj.geometry.attributes.color;
       c.array.set(colours);
       c.needsUpdate = true;
@@ -804,6 +823,11 @@ export class InstrumentScene {
     this.detTexture.magFilter = THREE.LinearFilter;
     this.detTexture.generateMipmaps = true;
     this.detTexture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    // The image is painted in sRGB (the colour maps are display colours), so
+    // it is declared as such; taken as linear it would be re-encoded on
+    // output and come out several stops brighter than the 2D pane.
+    this.detTexture.colorSpace = THREE.SRGBColorSpace;
+    this.detTexSize = [canvas.width, canvas.height];
     this.detFace.material.map = this.detTexture;
     this.detFace.material.needsUpdate = true;
     this.dirty = true;
@@ -811,6 +835,16 @@ export class InstrumentScene {
 
   /** Call when the detector image canvas contents change in place. */
   touchDetectorImage() {
+    // The GPU copy is allocated at a fixed size the first time it is uploaded
+    // and later frames are copied into it, so a canvas that has changed size
+    // (a new binning or panel) needs a fresh texture, not a flag. Without
+    // this the 3D face kept showing the last frame before the change.
+    const c = this.detTexture.image;
+    const [w, h] = this.detTexSize || [0, 0];
+    if (c.width !== w || c.height !== h) {
+      this.setDetectorImage(c);
+      return;
+    }
     this.detTexture.needsUpdate = true; // also regenerates the mipmaps
     this.dirty = true;
   }

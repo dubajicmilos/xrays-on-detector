@@ -1,5 +1,5 @@
 /*! The Game of Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
-/* Diffraction Game. Dark, dense, instrument-like. */
+/* The Game of Diffraction. Dark, dense, instrument-like. */
 :root {
   --bg: #0b0e18;
   --panel: #12151f;
@@ -155,7 +155,8 @@ button:disabled {
   border-color: #262c3c;
   cursor: default;
 }
-button.wide {
+button.wide,
+select.wide {
   width: 100%;
   margin-top: 6px;
 }
@@ -304,6 +305,11 @@ button:focus-visible {
 #stage {
   position: relative;
   min-width: 0;
+  /* The canvas keeps its width and height attributes as an intrinsic aspect
+     ratio, so without this a grid row is never allowed to be shorter than
+     that and the stacked layout locks the 3D view at a height it wrote itself,
+     pushing the detector pane off the screen. */
+  min-height: 0;
 }
 #view3d {
   width: 100%;
@@ -343,6 +349,7 @@ button:focus-visible {
   top: 10px;
   right: 10px;
   display: none;
+  z-index: 30; /* above the slid-in panel, so it can close it */
 }
 
 /* ------------------------------------------------------------ detector */
@@ -368,7 +375,9 @@ button:focus-visible {
 }
 #detCanvas {
   image-rendering: pixelated;
-  border: 1px solid #35405c;
+  /* An outline, not a border: the overlay and the hover readout map pixels
+     onto the canvas box, and a border would be part of that box. */
+  outline: 1px solid #35405c;
   background: #000;
   transform-origin: center center;
   will-change: transform;
@@ -407,12 +416,18 @@ button:focus-visible {
 #detInfo {
   position: absolute;
   left: 10px;
+  right: 10px;
   bottom: 6px;
   font:
     10.5px Consolas,
     ui-monospace,
     monospace;
   color: #7f8da9;
+  /* one line, clipped, so a narrow pane does not wrap it over the image */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 #boot {

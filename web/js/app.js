@@ -1,7 +1,8 @@
 /*! The Game of Diffraction · © 2026 Miloš Dubajić · MIT · https://github.com/dubajicmilos/xrays-on-detector */
 
 /**
- * Diffraction Game: wiring between the physics, the 3D scene and the controls.
+ * The Game of Diffraction: wiring between the physics, the 3D scene and the
+ * controls.
  *
  * State lives in one object. Anything that changes it calls requestSim(), which
  * coalesces work into the next animation frame, so dragging a slider never
@@ -49,12 +50,12 @@ const $ = (id) => document.getElementById(id);
 
 const st = {
   angles: { mu: 0, eta: 0, chi: 0, phi: 0, delta: 0, gamma: 0 },
-  // a/9 for the default structure (CsPbBr3, a = 5.87 A), i.e. 19.010 keV. At
-  // that wavelength the axis-aligned start is a zone axis with reflections
-  // exactly on the Ewald sphere, so the detector has a pattern on it the
-  // moment the page opens. Detune the energy and they go out, which is the
-  // Bragg condition made visible.
-  wavelength: 5.87 / 9,
+  // Set at boot to a/9 for the first bundled structure (CsPbBr3, a = 5.87 A,
+  // so 19.010 keV). At that wavelength the axis-aligned start is a zone axis
+  // with reflections exactly on the Ewald sphere, so the detector has a
+  // pattern on it the moment the page opens. Detune the energy and they go
+  // out, which is the Bragg condition made visible.
+  wavelength: 0.65,
   distance: 200,
   nFast: 1475,
   nSlow: 1679,
@@ -67,11 +68,13 @@ const st = {
   Ubase: P.eye3(),
   rot: { rx: 0, ry: 0, rz: 0 },
   cell: null, // set from the first bundled structure at boot
-  atoms: null, // null => bare lattice
+  atoms: null, // likewise
   B: null,
   hkl: null,
+  Qcryst: null, // B . hkl, kept with the list so a frame does not recompute it
   F2: null,
   builtQmax: 0, // the bound hkl was enumerated to; see rebuildReflections
+  listCapped: false, // builtQmax stopped at the size limit, not at the panel
   cmap: "inferno",
   log: true,
   gain: 1, // display contrast; see the note on the slider below
@@ -89,7 +92,6 @@ const st = {
 
 let scene, tables, luts, structures;
 let detCanvas,
-  detCtx,
   pending = false,
   needRebuild = true;
 const motorRows = {},
@@ -110,19 +112,36 @@ function detector(bin = st.bin, angles = st.angles) {
   }).binned(bin);
 }
 
-/** The largest |Q| the panel corners reach with the arm at `angles`. */
+/** The largest |Q| the panel reaches with the arm at `angles`. */
 const qmaxAt = (angles = st.angles) =>
   detector(1, angles).maxQmax(st.wavelength);
 
+/**
+ * The most the list may hold. The structure-factor sum costs one term per
+ * reflection and atom, and every frame sweeps the whole list, so both the
+ * count and the product are bounded: a 188-atom cell at 60 keV would
+ * otherwise ask for millions of reflections and hold the page for a minute.
+ * Past the bound the list stops at a smaller |Q| and the readout says so;
+ * what is cut is the weakest, highest-angle tail.
+ */
+const MAX_HKL = 1e6;
+const MAX_TERMS = 4e7;
+
+function qmaxCap() {
+  const nAtoms = Math.max(1, st.atoms.length);
+  return P.qmaxForCount(st.B, Math.min(MAX_HKL, MAX_TERMS / nAtoms));
+}
+
 function rebuildReflections(qmax = qmaxAt()) {
   st.B = P.bMatrix(...st.cell);
-  st.builtQmax = qmax;
-  st.hkl = P.hklWithinQmax(st.B, qmax);
-  st.F2 = st.atoms
-    ? P.structureFactors(tables, st.atoms, st.B, st.hkl)
-    : P.latticeStructureFactors(st.B, st.hkl);
+  const cap = qmaxCap();
+  st.listCapped = qmax > cap;
+  st.builtQmax = st.listCapped ? cap : qmax;
+  st.hkl = P.hklWithinQmax(st.B, st.builtQmax);
+  st.Qcryst = P.qCryst(st.B, st.hkl);
+  st.F2 = P.structureFactors(tables, st.atoms, st.B, st.hkl);
   needRebuild = false;
-  return qmax;
+  return st.builtQmax;
 }
 
 /**
@@ -138,7 +157,8 @@ function rebuildReflections(qmax = qmaxAt()) {
 const QMAX_MARGIN = 1.15;
 
 function growReflections(qmax) {
-  if (qmax > st.builtQmax) rebuildReflections(qmax * QMAX_MARGIN);
+  if (qmax > st.builtQmax && !st.listCapped)
+    rebuildReflections(qmax * QMAX_MARGIN);
 }
 
 // A CIF that says P 1 asserts nothing, so those structures show no symbol at
@@ -157,7 +177,6 @@ function applyStructure(s) {
   const c = s.cell;
   st.cell = [c.a, c.b, c.c, c.alpha, c.beta, c.gamma];
   st.atoms = s.atoms;
-  st.spaceGroup = s.spaceGroup || null;
   needRebuild = true;
 }
 
@@ -198,7 +217,7 @@ function simulate() {
   const { mu, eta, chi, phi } = st.angles;
   const ZU = P.matMul(P.sampleMatrix(mu, eta, chi, phi), st.U);
   let refl = P.excite({
-    Qcryst: P.qCryst(st.B, st.hkl),
+    Qcryst: st.Qcryst,
     F2: st.F2,
     hkl: st.hkl,
     ZU,
@@ -313,11 +332,13 @@ function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
   // d_min goes with the count beside it, so both describe the list rather than
   // one describing the list and the other the panel.
   const qmax = st.builtQmax;
-  $("detInfo").textContent =
+  st.summary =
     `${det.nFast}×${det.nSlow} px (${(det.pixelSize * 1000).toFixed(0)} µm bins)   ` +
-    `${st.hkl.length / 3} hkl in range   d_min ${((2 * Math.PI) / qmax).toFixed(3)} Å   ` +
-    `${nNear} near the sphere   ${table.length} on the detector` +
+    `${st.hkl.length / 3} hkl in range   d_min ${((2 * Math.PI) / qmax).toFixed(3)} Å` +
+    (st.listCapped ? " (list capped at its size limit)" : "") +
+    `   ${nNear} near the sphere   ${table.length} on the detector` +
     (nBlocked ? `   ${nBlocked} into the sample` : "");
+  $("detInfo").textContent = st.summary;
 
   const legend = [[`#78e6ff`, `on the detector (${table.length})`]];
   if (st.show.missed) {
@@ -351,13 +372,23 @@ function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
 
 function refreshUB() {
   const ub = P.UB(st.U, st.B, $("ubConv").value, st.wavelength);
-  $("ub").textContent = ub
-    .map((r) => r.map((v) => (v >= 0 ? "+" : "") + v.toFixed(6)).join("  "))
-    .join("\n");
+  // an entry that rounds to zero is printed as +0.000000, not as -0.000000
+  const cell = (v) => {
+    const r = Math.abs(v) < 5e-7 ? 0 : v;
+    return (r >= 0 ? "+" : "") + r.toFixed(6);
+  };
+  $("ub").textContent = ub.map((r) => r.map(cell).join("  ")).join("\n");
 }
+
+// Pixel c of the image covers CSS [c, c+1) of the canvas, so a spot centred on
+// coordinate c sits at c + 0.5 on screen. Row 0 is the top (see render.js).
+const cssX = (det, fast, sx) => (fast + 0.5) * sx;
+const cssY = (det, slow, sy) => (det.nSlow - 1 - slow + 0.5) * sy;
 
 function drawDetectorOverlay(det, table) {
   const box = $("detOverlay");
+  // The canvas carries no border (its frame is an outline), so this rect is
+  // the image itself and the scale below maps pixels to it exactly.
   const r = detCanvas.getBoundingClientRect();
   const p = box.getBoundingClientRect();
   const sx = r.width / det.nFast,
@@ -365,8 +396,8 @@ function drawDetectorOverlay(det, table) {
   const ox = r.left - p.left,
     oy = r.top - p.top;
 
-  const bcx = ox + det.beamCenterFast * sx;
-  const bcy = oy + (det.nSlow - 1 - det.beamCenterSlow) * sy;
+  const bcx = ox + cssX(det, det.beamCenterFast, sx);
+  const bcy = oy + cssY(det, det.beamCenterSlow, sy);
   let svg =
     `<svg width="100%" height="100%" style="position:absolute;inset:0">` +
     `<line x1="${bcx}" y1="${oy}" x2="${bcx}" y2="${oy + r.height}" stroke="#78c8ff66" stroke-dasharray="4 4"/>` +
@@ -375,8 +406,8 @@ function drawDetectorOverlay(det, table) {
     for (const t of [...table]
       .sort((x, y) => y.intensity - x.intensity)
       .slice(0, 22)) {
-      const x = ox + t.fast * sx,
-        y = oy + (det.nSlow - 1 - t.slow) * sy;
+      const x = ox + cssX(det, t.fast, sx),
+        y = oy + cssY(det, t.slow, sy);
       svg +=
         `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="#8cf0d2bb"/>` +
         `<text x="${x + 7}" y="${y - 5}" fill="#8cf0d2dd" font-size="10"` +
@@ -397,8 +428,10 @@ function drawDetectorOverlay(det, table) {
  * point look like on the way in, so a handler that echoed a rounded number
  * back into the box rubbed the character out as it was typed: no negative or
  * fractional angle could be entered at all. Half-typed and out-of-range values
- * are ignored here, as they are in the beam and detector boxes, and nothing is
- * written to the box until it loses focus.
+ * are ignored while typing, and nothing is written to the box until it loses
+ * focus. On commit a finished value outside the range is clamped to it rather
+ * than dropped: "251" in a box that stops at 250 used to leave the 25 that
+ * went in on the way, and now gives 250.
  */
 function bindTypedNumber(el, lo, hi, apply, settled) {
   el.addEventListener("input", () => {
@@ -407,6 +440,9 @@ function bindTypedNumber(el, lo, hi, apply, settled) {
     apply(v);
   });
   el.addEventListener("change", () => {
+    const v = parseFloat(el.value);
+    if (Number.isFinite(v) && (v < lo || v > hi))
+      apply(Math.max(lo, Math.min(hi, v)));
     el.value = settled();
   });
 }
@@ -433,13 +469,20 @@ function buildMotorRows() {
       st.angles[name] = v;
       if (!silent) requestSim();
     };
-    range.addEventListener("input", () => {
+    // Taking hold of a motor, by its slider or its box, takes it off a running
+    // move and stops it spinning: a box rewritten every frame by the spin
+    // cannot be typed into.
+    const takeHold = () => {
       stopAnim();
+      if (spinning.has(name)) run.click();
+    };
+    range.addEventListener("pointerdown", takeHold);
+    range.addEventListener("input", () => {
+      takeHold();
       set(parseFloat(range.value));
     });
-    // Touching the box takes the motor off a running move, whether or not the
-    // keystroke finished a number.
-    num.addEventListener("input", stopAnim);
+    num.addEventListener("focus", takeHold);
+    num.addEventListener("input", takeHold);
     bindTypedNumber(
       num,
       lo,
@@ -512,7 +555,16 @@ function stopAnim() {
   animation = null;
 }
 
-function animateTo(targets, steps = 26) {
+/**
+ * Drive motors to `targets` over `duration` ms with an ease-in-out, then call
+ * `onDone`. Time-based rather than frame-based, so the move takes as long on
+ * a 144 Hz display as on a 30 Hz one, and whatever waits on it (Move chi
+ * re-running Find omega) runs when the motors have actually arrived.
+ */
+function animateTo(targets, onDone = null, duration = 450) {
+  // Any motor being driven stops spinning: the two would fight over it.
+  for (const k of Object.keys(targets))
+    if (spinning.has(k)) motorRows[k].run.click();
   const start = {};
   for (const k of Object.keys(targets)) start[k] = st.angles[k];
   // Build for where the arm is going before it sets off, so the reflection it
@@ -520,15 +572,22 @@ function animateTo(targets, steps = 26) {
   // the end of it. simulate() still grows the list on the way, which covers a
   // path that swings further out than either end of it.
   growReflections(Math.max(qmaxAt(), qmaxAt({ ...st.angles, ...targets })));
-  animation = { start, targets, i: 0, steps };
+  animation = { start, targets, t0: null, duration, onDone };
 }
 
-function tick() {
+let lastTick = null;
+
+function tick(now) {
   requestAnimationFrame(tick);
+  // Elapsed time, capped so a tab coming back from the background does not
+  // leap: the spin is in degrees per second, not per frame.
+  if (!Number.isFinite(now)) now = performance.now();
+  const dt = lastTick === null ? 0 : Math.min((now - lastTick) / 1000, 0.1);
+  lastTick = now;
   let changed = false;
 
   if (spinning.size) {
-    const step = parseFloat($("speed").value) || 0;
+    const step = (parseFloat($("speed").value) || 0) * dt;
     for (const name of spinning) {
       const m = motorRows[name];
       let v = st.angles[name] + step;
@@ -539,8 +598,9 @@ function tick() {
     }
   }
   if (animation) {
-    animation.i++;
-    let t = animation.i / animation.steps;
+    if (animation.t0 === null) animation.t0 = now;
+    let t = Math.min(1, (now - animation.t0) / animation.duration);
+    const done = t >= 1;
     t = t * t * (3 - 2 * t);
     for (const [k, target] of Object.entries(animation.targets)) {
       motorRows[k].set(
@@ -549,7 +609,11 @@ function tick() {
       );
     }
     changed = true;
-    if (animation.i >= animation.steps) animation = null;
+    if (done) {
+      const { onDone } = animation;
+      animation = null;
+      if (onDone) onDone();
+    }
   }
   if (changed) simulate();
   if (scene.dirty) scene.render();
@@ -641,8 +705,13 @@ function bindInputs() {
     o.textContent = `${n}  (${f}×${s}, ${(p * 1000).toFixed(0)} µm)`;
     dp.appendChild(o);
   });
+  const custom = document.createElement("option");
+  custom.value = "custom";
+  custom.textContent = "custom";
+  dp.appendChild(custom);
   dp.value = 3;
   dp.addEventListener("change", () => {
+    if (dp.value === "custom") return;
     const [, f, s, p] = DETECTORS[dp.value];
     st.nFast = f;
     st.nSlow = s;
@@ -653,6 +722,16 @@ function bindInputs() {
     needRebuild = true;
     requestSim();
   });
+  // Editing the boxes by hand leaves the preset name, so the select says
+  // "custom" unless the numbers still match one of them.
+  const syncPreset = () => {
+    const i = DETECTORS.findIndex(
+      ([, f, s, p]) => f === st.nFast && s === st.nSlow && p === st.pixelSize,
+    );
+    dp.value = i < 0 ? "custom" : i;
+  };
+  for (const id of ["pixel", "nFast", "nSlow"])
+    $(id).addEventListener("input", syncPreset);
 
   const sel = $("structure");
   for (const s of structures) {
@@ -682,6 +761,11 @@ function bindInputs() {
     ev.target.value = ""; // so the same file can be loaded again
     try {
       const doc = parseCif(await file.text(), file.name.replace(/\.cif$/i, ""));
+      // The reader checks the cell too; this keeps a structure from any
+      // source out of the list unless a lattice can be built from it, because
+      // the first attempt would otherwise be inside an animation frame.
+      const c = doc.cell;
+      P.bMatrix(c.a, c.b, c.c, c.alpha, c.beta, c.gamma);
       const clash = structures.findIndex((x) => x.name === doc.name);
       if (clash >= 0) {
         structures[clash] = doc;
@@ -697,6 +781,11 @@ function bindInputs() {
       applyStructure(doc);
       const notes = [`${doc.atoms.length} atoms`];
       if (doc.spaceGroup) notes.push(doc.spaceGroup);
+      if (doc.skippedSites)
+        notes.push(
+          `${doc.skippedSites} atom ${doc.skippedSites === 1 ? "site" : "sites"} ` +
+            "without a readable position skipped",
+        );
       if (doc.blocksInFile > 1)
         notes.push(
           `${doc.blocksInFile} structures in the file, read ${doc.block}`,
@@ -731,14 +820,22 @@ function bindInputs() {
     });
   }
   $("mountFlat").addEventListener("click", () => {
+    if (!st.surfaceHkl.some(Boolean)) {
+      $("alignMsg").textContent = "Give a non-zero surface (hkl) first.";
+      return;
+    }
     const U = P.alignInLab(st.U, st.B, st.surfaceHkl, [1, 0, 0], {
       frame: "phi",
     });
-    if (U) {
-      st.U = U;
-      rebaseOrientation();
-      requestSim();
+    if (!U) {
+      $("alignMsg").textContent = "Alignment failed.";
+      return;
     }
+    st.U = U;
+    rebaseOrientation();
+    $("alignMsg").textContent =
+      `Surface normal (${st.surfaceHkl.join(" ")}) mounted vertical.`;
+    requestSim();
   });
 
   for (const [id, sel2] of [
@@ -833,12 +930,22 @@ function bindInputs() {
   });
 
   $("ubConv").addEventListener("change", refreshUB);
-  $("ubCopy").addEventListener("click", async () => {
+  const copyBtn = $("ubCopy");
+  copyBtn.addEventListener("click", async () => {
+    // The button reports what happened; a refused clipboard leaves the
+    // matrix selected so it can still be copied by hand.
+    let label = "Copied";
     try {
       await navigator.clipboard.writeText($("ub").textContent);
     } catch {
-      /* denied */
+      label = "Copy refused: select the text";
+      const sel = window.getSelection();
+      if (sel) sel.selectAllChildren($("ub"));
     }
+    copyBtn.textContent = label;
+    setTimeout(() => {
+      copyBtn.textContent = "Copy";
+    }, 1800);
   });
 
   $("stopAll").addEventListener("click", () => {
@@ -862,13 +969,39 @@ function bindInputs() {
     });
   });
   $("aimDet").addEventListener("click", () => {
-    const a = P.aimDetectorAt(st.B, st.U, driveHkl(), st.angles, st.wavelength);
-    animateTo({ delta: a.delta, gamma: a.gamma });
+    const hkl = driveHkl();
+    const msg = $("reachMsg");
+    if (!hkl.some(Boolean)) {
+      msg.textContent = "0 0 0 is the direct beam; give a reflection.";
+      return;
+    }
+    const r = P.etaReach(st.B, st.U, hkl, st.angles, st.wavelength);
+    if (!r.inLimitingSphere) {
+      msg.textContent = outsideSphereText(r);
+      return;
+    }
+    const arm = armWithinLimits(
+      P.aimDetectorAt(st.B, st.U, hkl, st.angles, st.wavelength),
+    );
+    if (!arm) {
+      msg.textContent =
+        "The arm cannot reach where this reflection scatters at these " +
+        "motor positions: it is outside the delta / gamma limits.";
+      return;
+    }
+    // The arm can point at where the reflection would scatter whether or not
+    // it is on the sphere now; say which, so an empty panel is not a puzzle.
+    const onSphere = Math.abs(qEps(hkl)) <= st.nSigma * st.sigma;
+    msg.textContent = onSphere
+      ? `Arm to delta ${arm.delta.toFixed(2)}, gamma ${arm.gamma.toFixed(2)}.`
+      : `Arm to delta ${arm.delta.toFixed(2)}, gamma ${arm.gamma.toFixed(2)}, ` +
+        "but the reflection is not on the Ewald sphere at these motor " +
+        "positions, so nothing will be there: use Find omega first.";
+    animateTo(arm);
   });
   $("moveChi").addEventListener("click", () => {
     if (chiTarget === null) return;
-    animateTo({ chi: chiTarget });
-    setTimeout(findOmega, 700);
+    animateTo({ chi: chiTarget }, findOmega);
   });
 
   for (const [id, key] of [
@@ -935,6 +1068,41 @@ const driveHkl = () => [
   +$("dl").value || 0,
 ];
 
+/** Excitation error of one reflection at the current motor positions. */
+function qEps(hkl) {
+  const k = (2 * Math.PI) / st.wavelength;
+  const q = P.qLab(st.B, st.U, hkl, st.angles);
+  return Math.hypot(q[0], k + q[1], q[2]) - k;
+}
+
+const outsideSphereText = (r) =>
+  `|Q| = ${r.Q.toFixed(3)} > 2k = ${((4 * Math.PI) / st.wavelength).toFixed(3)} Å⁻¹. ` +
+  "No geometry reaches this reflection at this wavelength; you need a shorter one.";
+
+/**
+ * The (delta, gamma) pair that points the arm at the same direction and lies
+ * within the motor limits, or null if neither does. The arm direction
+ * (sin d, cos g cos d, sin g cos d) is unchanged by d -> 180 - d together
+ * with g -> g + 180, so a solution past a limit usually has a twin inside it.
+ */
+function armWithinLimits(a) {
+  const lim = Object.fromEntries(
+    MOTORS.filter(([n]) => n === "delta" || n === "gamma").map(
+      ([n, , lo, hi]) => [n, [lo, hi]],
+    ),
+  );
+  const ok = (x) =>
+    x.delta >= lim.delta[0] &&
+    x.delta <= lim.delta[1] &&
+    x.gamma >= lim.gamma[0] &&
+    x.gamma <= lim.gamma[1];
+  const wrap = (g) => ((((g + 180) % 360) + 360) % 360) - 180;
+  const twin = { delta: 180 - a.delta, gamma: wrap(a.gamma + 180) };
+  if (ok(a)) return { delta: a.delta, gamma: a.gamma };
+  if (ok(twin)) return twin;
+  return null;
+}
+
 function findOmega() {
   const hkl = driveHkl();
   const sel = $("solutions");
@@ -942,12 +1110,15 @@ function findOmega() {
   $("moveChi").disabled = true;
   chiTarget = null;
 
+  if (!hkl.some(Boolean)) {
+    sel.innerHTML = "<option>give a reflection</option>";
+    $("reachMsg").textContent = "0 0 0 is the direct beam; give a reflection.";
+    return;
+  }
   const r = P.etaReach(st.B, st.U, hkl, st.angles, st.wavelength);
   if (!r.inLimitingSphere) {
     sel.innerHTML = "<option>outside the limiting sphere</option>";
-    $("reachMsg").textContent =
-      `|Q| = ${r.Q.toFixed(3)} > 2k = ${((4 * Math.PI) / st.wavelength).toFixed(3)} Å⁻¹. ` +
-      "No geometry reaches this reflection at this wavelength; you need a shorter one.";
+    $("reachMsg").textContent = outsideSphereText(r);
     return;
   }
   if (!r.feasible) {
@@ -969,24 +1140,40 @@ function findOmega() {
   }
 
   const sols = P.solveEta(st.B, st.U, hkl, st.angles, st.wavelength);
-  $("reachMsg").textContent =
-    `|Q| = ${r.Q.toFixed(4)} Å⁻¹,  d = ${((2 * Math.PI) / r.Q).toFixed(4)} Å,  ` +
-    `${sols.length} omega solution(s).`;
+  let unreachable = 0;
   for (const e of sols) {
-    const a = P.aimDetectorAt(
+    const raw = P.aimDetectorAt(
       st.B,
       st.U,
       hkl,
       { ...st.angles, eta: e },
       st.wavelength,
     );
+    const a = armWithinLimits(raw);
     const o = document.createElement("option");
-    o.textContent = `omega = ${e.toFixed(3)}  →  delta ${a.delta.toFixed(2)}  gamma ${a.gamma.toFixed(2)}`;
-    o.dataset.eta = e;
-    o.dataset.delta = a.delta;
-    o.dataset.gamma = a.gamma;
+    if (a) {
+      o.textContent = `omega = ${e.toFixed(3)}  →  delta ${a.delta.toFixed(2)}  gamma ${a.gamma.toFixed(2)}`;
+      o.dataset.eta = e;
+      o.dataset.delta = a.delta;
+      o.dataset.gamma = a.gamma;
+    } else {
+      // Listed so the omega is known, but not driveable: the arm cannot
+      // follow, and a drive that stopped at a limit used to look like a
+      // solution that had failed.
+      o.textContent = `omega = ${e.toFixed(3)}  →  arm out of reach (delta ${raw.delta.toFixed(1)}, gamma ${raw.gamma.toFixed(1)})`;
+      o.disabled = true;
+      unreachable++;
+    }
     sel.appendChild(o);
   }
+  const first = [...sel.options].find((o) => !o.disabled);
+  if (first) first.selected = true;
+  $("reachMsg").textContent =
+    `|Q| = ${r.Q.toFixed(4)} Å⁻¹,  d = ${((2 * Math.PI) / r.Q).toFixed(4)} Å,  ` +
+    `${sols.length} omega solution(s)` +
+    (unreachable
+      ? `, ${unreachable} with the arm outside its delta / gamma limits.`
+      : ".");
 }
 
 // ------------------------------------------------------- detector zoom / pan
@@ -1079,12 +1266,23 @@ function bindDetectorZoom() {
 // ---------------------------------------------------------------- detector hover
 
 function bindDetectorHover() {
-  $("detPane").addEventListener("pointermove", (ev) => {
+  const pane = $("detPane");
+  pane.addEventListener("pointermove", (ev) => {
     const det = detector();
     const r = detCanvas.getBoundingClientRect();
-    const fx = ((ev.clientX - r.left) / r.width) * det.nFast;
-    const fy = ((ev.clientY - r.top) / r.height) * det.nSlow;
-    if (fx < 0 || fy < 0 || fx >= det.nFast || fy >= det.nSlow) return;
+    // CSS position to pixel coordinate: pixel c spans [c, c+1) on screen, so
+    // its centre, where the physics puts the pixel, is at c + 0.5.
+    const fx = ((ev.clientX - r.left) / r.width) * det.nFast - 0.5;
+    const fy = ((ev.clientY - r.top) / r.height) * det.nSlow - 0.5;
+    if (
+      fx < -0.5 ||
+      fy < -0.5 ||
+      fx >= det.nFast - 0.5 ||
+      fy >= det.nSlow - 0.5
+    ) {
+      $("detInfo").textContent = st.summary || "";
+      return;
+    }
     const slow = det.nSlow - 1 - fy;
     const { centre, eFast, eSlow } = det.frame();
     const u = (fx - det.beamCenterFast) * det.pixelSize;
@@ -1096,9 +1294,15 @@ function bindDetectorHover() {
     ]);
     const tt = P.toDegrees(Math.acos(Math.max(-1, Math.min(1, khat[1]))));
     const q = ((4 * Math.PI) / st.wavelength) * Math.sin(P.toRadians(tt) / 2);
+    const d =
+      q > 1e-6 ? `${((2 * Math.PI) / q).toFixed(3)} Å` : "∞ (direct beam)";
     $("detInfo").textContent =
       `px (${fx.toFixed(1)}, ${fy.toFixed(1)})   2θ ${tt.toFixed(2)}°   ` +
-      `|Q| ${q.toFixed(3)} Å⁻¹   d ${((2 * Math.PI) / q).toFixed(3)} Å`;
+      `|Q| ${q.toFixed(3)} Å⁻¹   d ${d}`;
+  });
+  // the readout goes back to the frame summary once the pointer leaves
+  pane.addEventListener("pointerleave", () => {
+    $("detInfo").textContent = st.summary || "";
   });
 }
 
@@ -1121,10 +1325,11 @@ async function boot() {
 
   setElements(Object.keys(tables));
   detCanvas = $("detCanvas");
-  detCtx = detCanvas.getContext("2d");
   scene = new InstrumentScene($("view3d"));
   scene.setDetectorImage(detCanvas);
 
+  // Open at a/9 for the first bundled structure: see the note on st.wavelength.
+  st.wavelength = structures[0].cell.a / 9;
   applyStructure(structures[0]);
   buildMotorRows();
   buildRotRows();
@@ -1140,9 +1345,11 @@ async function boot() {
   }).observe($("stage"));
   window.addEventListener("resize", () => requestSim());
 
-  $("boot").remove();
+  // The loading screen comes down only once the first frame has drawn, so a
+  // failure inside it still lands on the message below.
   simulate();
-  tick();
+  $("boot").remove();
+  requestAnimationFrame(tick);
 
   // Scripting handle. Deliberate public API, not a debug leftover: it lets the
   // test harness drive the page without waiting on animation frames, and lets
@@ -1165,11 +1372,19 @@ async function boot() {
 }
 
 boot().catch((err) => {
-  const b = $("boot");
+  const b =
+    $("boot") || document.body.appendChild(document.createElement("div"));
+  b.id = "boot";
   b.className = "err";
-  b.textContent =
-    `Failed to start.\n\n${err.message}\n\n` +
-    "If you opened this file directly, serve it over http instead " +
-    "(ES modules and fetch do not work from file://).";
+  // Name the likely cause rather than always blaming file://: a browser
+  // without WebGL fails at the 3D scene, and that needs different advice.
+  const hint = /webgl/i.test(err.message)
+    ? "The 3D view needs WebGL, which this browser could not provide. " +
+      "Turn on hardware acceleration or try a current desktop browser."
+    : location.protocol === "file:"
+      ? "You opened this file directly; serve it over http instead " +
+        "(ES modules and fetch do not work from file://)."
+      : "Reload the page; if it keeps failing, the message above says what broke.";
+  b.textContent = `Failed to start.\n\n${err.message}\n\n${hint}`;
   console.error(err);
 });

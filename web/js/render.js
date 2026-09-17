@@ -61,6 +61,8 @@ export function renderFrame(
       eps: refl.eps[i],
       twoThetaDeg: (refl.twoTheta[i] * 180) / Math.PI,
       intensity: total,
+      // the brightest pixel of the spot: what the display stretch sees
+      peak: total / (TWO_PI * sPx * sPx),
     });
   }
   return { image, table };
@@ -150,10 +152,13 @@ export function rayGeometry(
   // reflection you can see on the panel has a ray you can see in the scene and
   // one that is extinct has neither. Without this every ray is drawn alike, and
   // a structure whose symmetry forbids half its reflections looks as though the
-  // renderer has lost them.
+  // renderer has lost them. The image is stretched by its brightest pixel, so
+  // the rays go by each spot's peak pixel too, not by its integrated counts: a
+  // broad grazing spot is fainter per pixel than a compact one of the same
+  // total, and its ray should be too.
   const hitColour = new Float32Array(table.length * 6);
   let imax = 0;
-  for (const r of table) if (r.intensity > imax) imax = r.intensity;
+  for (const r of table) if (r.peak > imax) imax = r.peak;
   const denom = log ? Math.log1p(gain * 500) : 1;
 
   table.forEach((r, n) => {
@@ -170,8 +175,8 @@ export function rayGeometry(
     let w = 0;
     if (imax > 0) {
       w = log
-        ? Math.log1p((r.intensity * gain * 500) / imax) / denom
-        : Math.min(1, (r.intensity * gain) / imax);
+        ? Math.log1p((r.peak * gain * 500) / imax) / denom
+        : Math.min(1, (r.peak * gain) / imax);
     }
     w = Math.max(0, Math.min(1, w));
     for (let e = 0; e < 2; e++) {
