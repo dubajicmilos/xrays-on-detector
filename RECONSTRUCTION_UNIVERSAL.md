@@ -1,14 +1,14 @@
-# Universal reciprocal-space reconstruction from CrysAlisPro data
+# Reciprocal-space reconstruction from CrysAlisPro data
 
-How the working raw-CBF → 3D reciprocal-space reconstruction was made possible,
-what it would take to make it universal for any CrysAlisPro dataset, and honest
-answers to the open questions. Written 2026-07-14 as a knowledge file for future
-sessions. **No code changes were made when writing this; it is notes only.**
+How the raw-CBF to 3D reciprocal-space reconstruction works, what it would take
+to make it universal for any CrysAlisPro dataset, and honest answers to the
+open questions.
 
-Code lives in `C:\Claude projects\X-rays-on-detector\xrays_on_detector`
-(`realframe.py`, `reconstruct.py`); run script `examples\reconstruct_I19-2.py`;
-outputs + figures in
-`...\rspace3d\validation\cbf-reconstruct-xrays\`.
+Code: `xrays_on_detector/realframe.py` (detector geometry, `.par` reading,
+frame indexing), `reconstruct.py` (CPU engine, HDF5 output),
+`reconstruct_gpu.py` (CuPy engine), `corrections.py` (per-pixel intensity
+corrections). Run scripts: `examples/reconstruct_I19-2.py`,
+`examples/reconstruct_I19-2_gpu.py`, `examples/reconstruct_from_par.py`.
 
 ---
 
@@ -51,15 +51,15 @@ match the observed scattering vectors of that frame's Bragg spots
 (`realframe.index_frame`, a known-cell pair-indexing search). It was then
 **validated by pure forward prediction**: `R0` + the header phi increment (no
 refit) predicts every spot on frames out to 60° of rotation, and the opposite
-rotation sense fails — so `R0`, the oscillation axis, and the sense are all
+rotation sense fails, so `R0`, the oscillation axis, and the sense are all
 correct.
 
 ---
 
 ## 3. Exact geometry / conventions used
 
-- **Lab frame:** beam along +z (source→sample→detector), detector fast axis +x,
-  slow axis +y, detector plane at z = distance. Flat detector, **2θ = 0**
+- **Lab frame:** beam along +z (source to sample to detector), detector fast
+  axis +x, slow axis +y, detector plane at z = distance. Flat detector, **2θ = 0**
   (on-axis). If a dataset has the detector at nonzero 2θ, add the detector-arm
   rotation (already available as `realframe.detector_matrix` logic).
 - **Units:** crystallographic 1/d (no 2π). `UB_used = UB_crysalis / lambda`, so
@@ -74,13 +74,13 @@ correct.
 ## 4. Answers to the questions
 
 ### Do we need to figure out R?
-**Yes — but it is cheap, and it does NOT need a CIF.** Indexing uses only the UB
+**Yes, but it is cheap, and it does NOT need a CIF.** Indexing uses only the UB
 (the cell + its orientation) and a handful of Bragg spots on one frame. For a
 strong crystal that is a few seconds and fully automatic. For a weak crystal,
 accumulate spots over several frames first.
 
 ### Is R0 "just a fixed thing in CrysAlisPro" that we can reuse universally?
-**Partly — and this is the important insight.** Decompose the forward map:
+**Partly, and this is the important insight.** Decompose the forward map:
 
     r_lab = R_conv . R_gonio(omega,kappa,phi) . UB . hkl
 
@@ -91,7 +91,7 @@ accumulate spots over several frames first.
 - `UB` carries the **crystal** (cell + mounting orientation).
 
 At the reference frame this gives `R0 = R_conv . R_gonio(omega0,kappa0,phi0)`.
-**Crucially, R0 does not contain the crystal** — the crystal is entirely inside
+**Crucially, R0 does not contain the crystal**: the crystal is entirely inside
 UB. So in principle:
 
 > R0 is a property of the instrument and the reference goniometer angles, **not**
@@ -101,12 +101,14 @@ UB. So in principle:
 
 If true, you calibrate `R_conv` **once** and never index again. **Caveats (be
 honest):**
-1. This is a **theoretical** consequence of the standard Busing–Levy convention
-   (UB defined at datum, `Q_lab = R_gonio . UB . hkl`). It is **not yet tested
-   across crystals** — we only have one dataset. The test: index frame 1 of a
-   *different* crystal at the same datum and check R0 matches.
+1. This is a **theoretical** consequence of the standard Busing-Levy convention
+   (UB defined at datum, `Q_lab = R_gonio . UB . hkl`). Checked so far on two
+   datasets of the same crystal at different temperatures: their fitted R0
+   differ by a 4/mmm symmetry operation, which is exactly the branch ambiguity
+   of caveat 2. So R0 is not reusable across mounts as fitted; re-indexing per
+   dataset (fast) stays the default.
 2. Indexing can land on any **symmetry-equivalent** orientation (near-cubic
-   metric → up to 48 branches). So a fitted R0 is fixed only *up to a lattice
+   metric gives up to 48 branches). So a fitted R0 is fixed only *up to a lattice
    symmetry operation*. For a truly reusable `R_conv` you must pin the branch.
 3. `R_conv` is fixed only per beamline/detector/CrysAlisPro-config. A different
    instrument (or a detector at a different 2θ) needs its own calibration.
@@ -126,159 +128,99 @@ pytilting). Reconstruction is purely geometric.
 
 ---
 
-## 5. Making it universal — concrete plan
+## 5. Making it universal: concrete plan
 
 **Tier 1 (works today, robust, recommended default).** For each dataset: read
-geometry from the CBF header, read UB from the `.par`/`.h5`, auto-index one frame
-per *sweep* to get R0, reconstruct via (★). No CIF, no convention derivation.
-Handles any single- or multi-sweep CrysAlisPro phi/omega scan. The only
-per-dataset unknown (R0) is found automatically.
-Gaps to close: parse UB directly from `.par` (currently read from the rspace3d
-`.h5`); auto-pick the reference frame with the most spots; support omega scans
-and nonzero-2θ detector positions.
+geometry from the CBF header, read UB from the `.par` (`realframe.read_crysalis_par`)
+or an `.h5`, auto-index one frame per *sweep* to get R0
+(`realframe.orient_from_frame`), reconstruct via (★). No CIF, no convention
+derivation. Handles any single- or multi-sweep CrysAlisPro phi/omega scan. The
+only per-dataset unknown (R0) is found automatically.
+Gaps to close: auto-pick the reference frame with the most spots; support omega
+scans and nonzero-2θ detector positions.
 
 **Tier 2 (fully blind, no indexing).** Calibrate `R_conv` once (from this dataset:
 `R_conv = R0 . R_gonio(omega0,kappa0,phi0)^-1`, which needs the KM4 model), and
 encode `R_gonio(omega,kappa,phi)`. Then R0 for any future dataset is computed
-from its header angles — no indexing. More work, and must be validated against
+from its header angles, with no indexing. More work, and must be validated against
 Tier 1 before trust. Worth it only if you want reconstruction with zero Bragg
 spots available (e.g. very weak crystals) or full automation.
 
 ---
 
-## 6. What engine is used for real↔reciprocal conversion?
+## 6. The engine
 
-**Our own ~150-line numpy code** (`xrays_on_detector/reconstruct.py`). Not a
-third-party engine. Per frame it is one 3×3 matrix multiply over all pixels
-(pixel→hkl) plus a weighted 3D histogram (`np.bincount`) into the voxel grid.
-
-### We are NOT using Yell — and Yell would not reconstruct anyway
-Verified: **Yell is a 3D-ΔPDF refinement program** — it *models* diffuse
-scattering by fitting a real-space pair-distribution model to an **already
-reconstructed, already corrected** reciprocal-space volume. It does **not** read
-detector frames and does **not** do the reconstruction or the intensity
-corrections. So "Yell gives the fastest reconstruction" / "Yell has the intensity
-corrections" is a mix-up: those belong to the **reconstruction** step, which is a
-different program.
-
-The reconstruction tool in that ecosystem is **Meerkat** (same author, Arkadiy
-Simonov): "a python program for performing reciprocal space reconstruction from
-single-crystal X-ray measurements," in crystallographic coordinates, with
-symmetry averaging — i.e. it does essentially what our `reconstruct.py` does, and
-it already implements the corrections. The pipeline is:
-
-    raw frames --[Meerkat: reconstruct + correct + symmetrise]--> hdf5 --[Yell: 3D-dPDF model]--> disorder model
-
-So our code is a **Meerkat-equivalent** reconstruction step. For the corrections
-and a battle-tested path, Meerkat is the reference to compare against or adopt;
-Yell would sit downstream of whatever reconstruction we use.
+Our own numpy code (`xrays_on_detector/reconstruct.py`), about 150 lines, with a
+CuPy twin (`reconstruct_gpu.py`) that shares the pixel to hkl map and the voxel
+grid. Per frame it is one 3×3 matrix multiply over all pixels (pixel to hkl)
+plus a weighted 3D histogram into the voxel grid. Each voxel stores the sum of
+counts and the number of contributing pixels; the output is their ratio, so
+voxels visited many times and voxels visited once are on the same footing.
 
 ---
 
 ## 7. Efficiency and GPU
 
-Current run: **16 min for 1750 frames** on a 47M-voxel grid (−9..9 r.l.u.,
+CPU path, measured: **16 min for 1750 frames** on a 47M-voxel grid (−9..9 r.l.u.,
 0.05 step), single-threaded. Cost breakdown, slowest first:
 1. **Histogram accumulation** (`np.bincount` with `minlength = 47M`, twice per
    frame). Dominant. Allocating/summing a 47M array every frame is the killer.
-2. **Frame I/O + decode** (7.9 GB read from the F: drive + fabio byte-offset
-   decode). Second biggest; embarrassingly parallel.
-3. Pixel→hkl matmul (small, ~4.5M×3 @ 3×3). Cheap.
+2. **Frame I/O + decode** (7.9 GB read from disk + fabio byte-offset decode).
+   Second biggest; embarrassingly parallel.
+3. Pixel to hkl matmul (small, ~4.5M×3 @ 3×3). Cheap.
 
-**Speedups (not yet done):**
-- **GPU (biggest win):** move the matmul + scatter-add to CuPy
-  (`cupyx.scatter_add` / a bincount kernel). rspace3d already uses CuPy for
-  symmetrisation, so the dependency is present. Expect ~10–50× on the histogram.
-- **Smaller grid:** −6..6 at 0.05 is 240³ = 13.8M voxels → ~3× faster than the
-  −9..9 grid used, for the same physics if you don't need |hkl|>6.
-- **Threaded frame reading** to overlap I/O with compute (I/O is a large fraction).
-- **Persistent accumulator** instead of re-allocating a `minlength` array each
-  frame (use scatter-add into a fixed buffer).
-With GPU + threaded I/O, minutes → tens of seconds is realistic. Meerkat is also
-numpy-based, so it is not automatically faster than our code; a GPU version would
-likely beat it.
+The GPU path (`reconstruct_volume_gpu`) removes the first two costs: one
+persistent float64 sum + int32 count accumulator lives on the GPU and each frame
+is a `scatter_add` into it (no per-frame voxel-sized temporaries), the pixel
+scattering vectors and the correction map are uploaded once, and frames are
+read ahead on a thread pool so disk I/O overlaps compute. It is bit-identical
+to the CPU path (`tests/test_reconstruct_gpu.py`). On the 480³ grid used for the
+I19-2 validation (−6..6 at 0.025 r.l.u.) it takes about half a minute for 1750
+frames against about half an hour on the CPU.
+
+If the CPU path has to be used, a smaller grid is the easy win: −6..6 at 0.05 is
+240³ = 13.8M voxels, about 3× faster than the −9..9 grid for the same physics if
+you do not need |hkl| > 6.
 
 ---
 
-## 8. Intensity corrections (where they belong, not done yet)
+## 8. Intensity corrections
 
-Corrections are part of **reconstruction**, not ΔPDF. For a photometrically
-quantitative diffuse map, apply per pixel before/at accumulation:
-- **Solid angle** (pixels off-centre subtend less; ∝ cos³ of the obliquity for a
-  flat detector),
-- **Polarization** (synchrotron beam is ~horizontally polarized; header gave
-  Polarization = 0.99),
-- **Lorentz** (rotation method: ∝ 1/|sin(2θ)·(component of the reflection
-  velocity through the sphere)|; the standard rotation Lorentz factor),
-- **Detector efficiency / flat field, air+sensor absorption** (CdTe sensor,
-  0.75 mm),
-- **Per-voxel normalisation** by the number of contributing measurements
-  (already done: we store counts and output the mean).
-Meerkat implements these; our reconstruction currently outputs the plain mean of
-raw counts (geometrically correct, not yet corrected).
+Corrections are part of **reconstruction**, not of any later modelling. For a
+photometrically quantitative diffuse map they are applied per pixel at
+accumulation time. `corrections.pixel_corrections` implements the two
+geometric ones as a single multiplier folded into the pixel weights:
+- **Solid angle** (a flat-detector pixel off-centre subtends less; the factor is
+  cos³ of the obliquity),
+- **Polarization** (synchrotron beam is mostly horizontally polarized; the I19-2
+  header gave Polarization = 0.99), in the Thomson form
+  `p (1 − (h·k̂)²) + (1 − p) (1 − (v·k̂)²)`.
+
+**Lorentz is deliberately not applied.** A rotation-scan reconstruction that
+normalises each voxel by its number of contributing pixels already accounts for
+the varying time a reciprocal-space point spends on the Ewald sphere, so
+dividing by the count is the geometric Lorentz correction.
+
+Not implemented (each is a further per-pixel multiplier of ~10 lines):
+- **Air absorption**, `exp(−μ · path)`, μ from the mass attenuation at the
+  photon energy,
+- **Sensor absorption / quantum efficiency**, `1 − transmission(material, λ, t)`
+  (CdTe, 0.75 mm for the Eiger, from the header),
+- **Detector flat field.**
+
+The polarization axis is taken as the detector `fast` axis (see the module
+docstring); confirm it for a new instrument before trusting the correction at
+the few-percent level.
 
 ---
 
 ## 9. Recommendation for "universal"
 
-1. Keep **Tier 1** (auto-index one frame per sweep) as the default — it is
+1. Keep **Tier 1** (auto-index one frame per sweep) as the default: it is
    already universal for CrysAlisPro phi/omega scans and needs no CIF.
-2. Add the **corrections** (Section 8) and a **GPU** path (Section 7) to
-   `reconstruct.py`; or, equivalently, **benchmark/adopt Meerkat**, which already
-   has both and outputs Yell-ready hdf5.
+2. Use the GPU path (Section 7) with the corrections on (Section 8); add the
+   absorption terms if the diffuse intensities are to be used quantitatively.
 3. Optionally pursue **Tier 2** (calibrate `R_conv` once) to drop the indexing
-   step — but first *test the crystal-independence of R0* across two crystals, and
-   pin the symmetry branch.
-4. Output stays in rspace3d hdf5 layout so it feeds rspace3d's symmetriser and
-   viewer, and (once corrected) Yell.
-
----
-
-## 11. Meerkat2 (C++) — assessment (checked the source 2026-07-14)
-
-Repo: https://github.com/aglie/Meerkat2 — a C++17 rewrite (Eigen + HDF5 + CBFlib),
-reads CBF/HDF5, outputs Yell-format hdf5.
-
-**Efficiency.** Compiled C++, but **single-threaded — no OpenMP / TBB / GPU**
-(verified in `CMakeLists.txt`). Faster than Python Meerkat / our numpy per frame
-(no interpreter overhead, Eigen-vectorised), but not parallel and not GPU, so a
-**CuPy/GPU version of our reconstruction would likely match or beat it**. It has a
-`RECONSTRUCT_EVERY_NTH_FRAME` frame-skip option for speed (same trick as our
-prototype). Bottom line: modestly faster than us today; not the fastest possible.
-
-**Corrections (from `Corrections.cpp` — this is the useful part).** A single
-per-pixel coefficient `= solid_angle × polarization × air_transmission ×
-sensor_absorption`, **multiplied into** each pixel:
-- **Solid angle / obliquity:** `cos³(detected-ray angle)` (flat-detector
-  foreshortening + projected solid angle).
-- **Polarization:** `(1-P)·(1-(n̂·ŝ)²) + P·(1-(p̂·ŝ)²)`, with configurable factor
-  `P` and plane normal (synchrotron P≈1).
-- **Air absorption:** `exp(-μ·path)`, μ from mass-attenuation at the photon energy.
-- **Sensor absorption / quantum efficiency:** `1 - transmission(material, λ, t)`
-  (Silicon for Pilatus; for our Eiger use **CdTe, 0.75 mm** from the header).
-- **No Lorentz — deliberate.** Diffuse reconstruction normalises each voxel by its
-  **measurement count**, which plays the Lorentz role for continuous scattering.
-  Our `reconstruct.py` already does this (outputs sum/count). So the ONLY
-  corrections we lack vs Meerkat2 are the **three per-pixel multipliers above**
-  (solid angle, polarization, absorptions) — each ~10 lines.
-
-**Big caveat for our goal.** Meerkat2 takes orientation from **XDS**
-(`XPARM.XDS`/`GXPARM.XDS`), **not CrysAlisPro**. So it does not solve the
-CrysAlis-UB ambiguity — it sidesteps it by using XDS's self-consistent geometry.
-To use Meerkat2 on our data: either (a) re-index the frames in XDS, or (b) write a
-**CrysAlis-UB → `XPARM.XDS` converter** (documented text format: rotation axis,
-beam, detector geometry, and the A/UB matrix). Option (b) is the clean bridge:
-CrysAlisPro indexing + Meerkat2 reconstruction/corrections.
-
-**Recommendation (two viable paths, both give corrected Yell-ready volumes):**
-1. **Port the three corrections** into our `reconstruct.py` (formulas above) and
-   optionally GPU-accelerate. Stays fully CrysAlisPro-native, no XDS.
-2. **Bridge to Meerkat2** via a UB→`XPARM.XDS` writer, then run the maintained C++
-   reconstruction for free.
-
-## 10. Sources
-- Yell (3D-ΔPDF refinement): https://github.com/yellprogram/Yell
-- Meerkat (Python reconstruction from frames): https://github.com/aglie/meerkat
-- Meerkat2 (C++ reconstruction from frames): https://github.com/aglie/Meerkat2
-- Our code: `xrays_on_detector/reconstruct.py`, `realframe.py`;
-  `examples/reconstruct_I19-2.py`.
+   step, but first pin the symmetry branch (Section 4, caveats 1 and 2).
+4. Output stays in the rspace3d HDF5 layout (`reconstruct.save_rspace3d_h5`) so it
+   feeds rspace3d's symmetriser and viewer unchanged.

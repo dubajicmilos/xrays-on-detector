@@ -6,7 +6,7 @@ frames) runs as a float64 scatter-add on the GPU, and disk reads are prefetched 
 background threads so I/O overlaps compute. Optional per-pixel intensity
 corrections (see corrections.pixel_corrections) are folded into the weights.
 
-Design notes / Meerkat-inspired choices:
+Design notes:
   * one persistent float64 sum + int32 count accumulator on the GPU (no per-frame
     nvox-sized temporaries); scatter_add does not support int64 accumulators.
   * count normalisation (sum/count) is what turns raw per-pixel photon counts into

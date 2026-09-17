@@ -21,8 +21,8 @@ The Lorentz factor is deliberately NOT included. In a rotation-scan reconstructi
 that normalises each voxel by its number of contributing pixels, the varying time
 a reciprocal-space point spends on the Ewald sphere appears as a varying pixel
 count, so dividing by the count already applies the geometric Lorentz correction.
-This is the Meerkat (A. Simonov) convention: correct only the per-pixel photometric
-factors here, and let the count normalisation handle the sampling geometry.
+Only the per-pixel photometric factors are corrected here; the count
+normalisation handles the sampling geometry.
 
 Assumption for a synchrotron source (e.g. Diamond I19-2): the beam is polarised in
 the horizontal plane, taken here as the detector `fast` axis. If the instrument's
