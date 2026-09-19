@@ -15,6 +15,7 @@ import {
   spotRadius,
   stretch,
 } from "./display.js";
+import { pairUp, rotateInPlane } from "./overlay.js";
 
 const DIM = "#8794b0";
 const LINE = "#2a3145";
@@ -320,6 +321,178 @@ export class PatternView {
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
     ctx.fillText(`${step} Å⁻¹`, x0 + px / 2, y0 - 4 * dpr);
+  }
+
+  /**
+   * Two sections in one frame: crystal A, and crystal B rotated by `twist`
+   * degrees about the zone axis.
+   *
+   * The rotation is applied to the in-plane coordinates only, which is exact
+   * for a section: the cut is perpendicular to the zone axis, so a rotation of
+   * the crystal about that axis is a rotation of the picture about its centre.
+   * Matched reflections are ringed in green when `showMatch` is set, so the
+   * coincidences and the misfits can be told apart at a glance.
+   */
+  drawOverlay(resultA, resultB, opts = {}) {
+    const {
+      twist = 0,
+      gain = 1,
+      log = false,
+      lut,
+      spotScale = 9,
+      labels = false,
+      labelThreshold = 0.35,
+      showMatch = true,
+      tol = 0.03,
+      nameA = "crystal 1",
+      nameB = "crystal 2",
+      structure = null,
+      // "overlay" draws both crystals equally; "coincidences" keeps what the two
+      // share and fades the rest; "differences" does the opposite, which is how
+      // you look for the reflections that fingerprint one phase in the other.
+      mode = "overlay",
+    } = opts;
+    const { w, h } = this.clear();
+    const ctx = this.ctx;
+    this.spots = null;
+
+    if (!resultA || !resultA.count) {
+      this.message("no reflections in the first crystal\nlower d min", "#f0a05a");
+      return;
+    }
+    const rotB = resultB && resultB.count ? rotateInPlane(resultB, twist) : null;
+    const valueA = stretch(resultA.intensity, { gain, log });
+    const valueB = rotB ? stretch(resultB.intensity, { gain, log }) : null;
+
+    let lim = 0;
+    for (let i = 0; i < resultA.count; i++)
+      if (valueA[i] > 1e-3)
+        lim = Math.max(lim, Math.abs(resultA.x[i]), Math.abs(resultA.y[i]));
+    if (rotB)
+      for (let i = 0; i < resultB.count; i++)
+        if (valueB[i] > 1e-3)
+          lim = Math.max(lim, Math.abs(rotB.x[i]), Math.abs(rotB.y[i]));
+    if (lim <= 0) {
+      this.message("every reflection in view is extinct\nraise the contrast", "#f0a05a");
+      return;
+    }
+    lim *= 1.1;
+
+    this.cx = w / 2;
+    this.cy = h / 2;
+    this.scale = Math.min(w, h) / (2 * lim);
+
+    const colourB = "#e2a06a";
+    const hits = rotB
+      ? pairUp(resultA, { count: resultB.count, x: rotB.x, y: rotB.y }, { tol })
+      : null;
+    const hitSet = hits ? new Set(hits.pairs.map((p) => p.a)) : null;
+
+    // Per-spot opacity, so the two modes can pick out what coincides and what
+    // does not without a second pass over the reflections.
+    const matched = (i) => !!(hitSet && hitSet.has(i));
+    const alphaA =
+      mode === "coincidences"
+        ? (i) => (matched(i) ? 0.95 : 0.1)
+        : mode === "differences"
+          ? (i) => (matched(i) ? 0.1 : 0.95)
+          : () => 0.85;
+    const alphaB = () => (mode === "differences" ? 0.45 : 0.72);
+
+    const spots = [];
+    const paint = (xs, ys, value, colour, alpha, count) => {
+      ctx.fillStyle = colour;
+      for (let i = 0; i < count; i++) {
+        if (value[i] <= 1e-3) continue;
+        const a = alpha(i);
+        if (a <= 0) continue;
+        ctx.globalAlpha = a;
+        const [px, py] = this.toScreen(xs[i], ys[i]);
+        const r = spotRadius(value[i], spotScale) * this.dpr;
+        if (px < -r || py < -r || px > w + r || py > h + r) continue;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    // Crystal 2 sits underneath so crystal 1 stays readable where they overlap.
+    if (rotB) paint(rotB.x, rotB.y, valueB, colourB, alphaB, resultB.count);
+    paint(resultA.x, resultA.y, valueA, ACCENT, alphaA, resultA.count);
+
+    for (let i = 0; i < resultA.count; i++) {
+      if (valueA[i] <= 1e-3) continue;
+      const [px, py] = this.toScreen(resultA.x[i], resultA.y[i]);
+      const r = spotRadius(valueA[i], spotScale) * this.dpr;
+      spots.push({ x: px, y: py, r, i });
+    }
+
+    if (showMatch && hits && hits.pairs.length) {
+      ctx.strokeStyle = GOOD;
+      ctx.lineWidth = 1.6 * this.dpr;
+      for (const p of hits.pairs) {
+        const [px, py] = this.toScreen(resultA.x[p.a], resultA.y[p.a]);
+        const r = spotRadius(valueA[p.a], spotScale) * this.dpr + 5 * this.dpr;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
+
+    // The direct beam
+    const [ox, oy] = this.toScreen(0, 0);
+    ctx.strokeStyle = DIM;
+    ctx.lineWidth = 1 * this.dpr;
+    ctx.beginPath();
+    ctx.arc(ox, oy, 4 * this.dpr, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    if (labels) {
+      ctx.fillStyle = DIM;
+      ctx.font = `${10 * this.dpr}px Consolas, ui-monospace, monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      let shown = 0;
+      for (const s of spots) {
+        if (valueA[s.i] < labelThreshold || shown > 400) continue;
+        ctx.fillText(
+          formatHkl([
+            resultA.hkl[3 * s.i],
+            resultA.hkl[3 * s.i + 1],
+            resultA.hkl[3 * s.i + 2],
+          ]),
+          s.x,
+          s.y - s.r - 2 * this.dpr,
+        );
+        shown++;
+      }
+    }
+
+    // Legend: which colour is which crystal, and the twist actually applied.
+    const pad = 12 * this.dpr;
+    ctx.fillStyle = "rgba(9,11,18,0.78)";
+    ctx.fillRect(pad, pad, 190 * this.dpr, (rotB ? 58 : 40) * this.dpr);
+    ctx.font = `${10.5 * this.dpr}px Consolas, ui-monospace, monospace`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const line = (row, colour, text) => {
+      const ly = pad + (14 + row * 16) * this.dpr;
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.arc(pad + 12 * this.dpr, ly, 4 * this.dpr, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.fillStyle = DIM;
+      ctx.fillText(text, pad + 24 * this.dpr, ly);
+    };
+    line(0, ACCENT, nameA);
+    if (rotB) line(1, colourB, `${nameB}   twist ${twist.toFixed(1)}°`);
+    if (rotB && showMatch && hits)
+      line(2, GOOD, `${hits.pairs.length} coincident`);
+
+    this.spots = spots;
+    this._drawKey(resultA, structure, lim);
+    return spots.length;
   }
 
   /** Nearest reflection to a client-space point, or null. */
