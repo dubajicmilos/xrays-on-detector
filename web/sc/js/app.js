@@ -18,6 +18,7 @@ import {
   UNITS,
 } from "../../js/scatter.js";
 import { formatHkl } from "./display.js";
+import { describeComparison, pairUp, rotateInPlane, bestTwist } from "./overlay.js";
 import { computePowder } from "./powder.js";
 import { PatternView } from "./render.js";
 import { computeSection, zoneLaw } from "./section.js";
@@ -57,6 +58,16 @@ const st = {
   labelThr: 0.35,
   spotSize: 9,
   colormap: "inferno",
+  // Two-crystal comparison: a second structure, the angle its pattern is
+  // rotated by about the zone axis, and whether coincidences are ringed.
+  twist: 0,
+  showMatch: true,
+  secondIndex: -1,
+  matchTol: 0.03,
+  compareMode: "overlay",
+  // Powder: 0 keeps the relative d-spacing merge, a positive value merges on a
+  // 2theta window (degrees) instead.
+  mergeTol: 0,
 };
 
 let luts = null;
@@ -64,6 +75,8 @@ let structures = [];
 let structure = null;
 let result = null;
 let view = null;
+let second = null;
+let result2 = null;
 
 // --------------------------------------------------------------- compute
 
@@ -100,6 +113,7 @@ function recompute() {
         wavelength: lam,
         radiation: st.radiation,
         twoThetaMax: st.ttMax,
+        twoThetaTol: st.mergeTol,
       });
     }
   } catch (err) {
@@ -114,7 +128,35 @@ function recompute() {
     return;
   }
   lastError = null;
+  recomputeSecond();
   draw();
+}
+
+/**
+ * The second crystal's section, when one is loaded.
+ *
+ * It is cut with the same zone axis, layer, d min and radiation as the first,
+ * so the two patterns are directly comparable: any difference on screen is the
+ * structure, not the settings.
+ */
+function recomputeSecond() {
+  if (!second || st.mode !== "section") {
+    result2 = null;
+    return;
+  }
+  try {
+    result2 = computeSection(second, {
+      uvw: st.uvw,
+      layer: st.layer,
+      dMin: st.dMin,
+      radiation: st.radiation,
+    });
+  } catch (err) {
+    result2 = null;
+    const status = $("status");
+    status.className = "bad";
+    status.textContent = `second crystal: ${err.message}`;
+  }
 }
 
 /** The message on the canvas when there is no result, redrawn on resize. */
@@ -128,6 +170,24 @@ function draw() {
       labels: st.labels,
       labelThreshold: Math.max(st.labelThr * 100, 1),
     });
+  } else if (second && result2) {
+    // Two crystals in one frame. The second is drawn rotated by st.twist about
+    // the zone axis, which for a section is exactly a rotation of the picture.
+    view.drawOverlay(result, result2, {
+      twist: st.twist,
+      gain: st.gain,
+      log: st.log,
+      lut,
+      spotScale: st.spotSize,
+      labels: st.labels,
+      labelThreshold: st.labelThr,
+      showMatch: st.showMatch,
+      tol: st.matchTol,
+      mode: st.compareMode,
+      structure,
+      nameA: structure.name,
+      nameB: second.name,
+    });
   } else {
     view.drawSpots(result, structure, {
       gain: st.gain,
@@ -140,6 +200,7 @@ function draw() {
     });
   }
   writeOverlay();
+  writeMatchInfo();
 }
 
 function writeOverlay() {
@@ -203,6 +264,31 @@ function writeOverlay() {
       }
     }
   }
+}
+
+/**
+ * The comparison readout: how many reflections the two crystals share, how
+ * many are unique to each, and how far apart the shared ones sit.
+ *
+ * The pairing repeats the one the renderer did, which is a linear pass over a
+ * few hundred points and far cheaper than plumbing the result back out.
+ */
+function writeMatchInfo() {
+  const info = $("matchInfo");
+  if (!info) return;
+  if (!second || !result2) {
+    info.textContent = "";
+    return;
+  }
+  const rot = rotateInPlane(result2, st.twist);
+  const ours = pairUp(result, { count: result2.count, x: rot.x, y: rot.y }, { tol: st.matchTol });
+  info.textContent = describeComparison(
+    result,
+    result2,
+    ours,
+    structure.name,
+    second.name,
+  );
 }
 
 /** True when no reflection outside the zero layer reaches the draw threshold. */
@@ -276,6 +362,41 @@ async function onFile(file) {
   }
 }
 
+// ------------------------------------------------------------------ second crystal
+
+/**
+ * Load the comparison crystal.
+ *
+ * It joins the same `structures` list as the primary, so either select can
+ * pick any structure and the two lists cannot drift apart.
+ */
+async function onSecondFile(file) {
+  try {
+    const doc = parseCif(await file.text(), file.name.replace(/\.cif$/i, ""));
+    new Structure(doc);
+    structures.push(doc);
+    const idx = String(structures.length - 1);
+    for (const id of ["structure", "structure2"]) {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = `${doc.name} (uploaded)`;
+      $(id).appendChild(opt);
+    }
+    $("structure2").value = idx;
+    st.secondIndex = structures.length - 1;
+    second = new Structure(doc);
+    syncRows();
+    recompute();
+  } catch (err) {
+    const msg =
+      err instanceof CifError
+        ? err.message
+        : `could not read this file: ${err.message}`;
+    $("status").className = "bad";
+    $("status").textContent = msg;
+  }
+}
+
 // ------------------------------------------------------------------ export
 
 function stem() {
@@ -294,6 +415,57 @@ function download(name, blob) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * The coincidence table: which reflections the two crystals share, how far
+ * apart they sit, and which belong to one crystal only.
+ *
+ * Intensities are given relative to the strongest reflection of each crystal,
+ * so the two columns are comparable across structures whose absolute scale
+ * differs (a neutron and an X-ray pattern, say).
+ */
+function saveMatches() {
+  if (!result || !second || !result2) return;
+  const rot = rotateInPlane(result2, st.twist);
+  const { pairs, onlyA, onlyB } = pairUp(
+    result,
+    { count: result2.count, x: rot.x, y: rot.y },
+    { tol: st.matchTol },
+  );
+  const peak = (arr) => {
+    let m = 0;
+    for (const v of arr) if (v > m) m = v;
+    return m || 1;
+  };
+  const maxA = peak(result.intensity);
+  const maxB = peak(result2.intensity);
+
+  const L = [
+    `# ${structure.name}  vs  ${second.name}`,
+    `# zone [${st.uvw.join(" ")}]   layer ${st.layer}   d min ${st.dMin} A`,
+    `# twist ${st.twist.toFixed(2)} deg   match tolerance ${st.matchTol} 1/A`,
+    `# ${pairs.length} coincident, ${onlyA.length} only in ${structure.name}, ` +
+      `${onlyB.length} only in ${second.name}`,
+    "#",
+    "#    h    k    l     |     h    k    l      dQ(1/A)    I(0-100) A    I(0-100) B",
+  ];
+  const hklOf = (res, i) => [
+    res.hkl[3 * i],
+    res.hkl[3 * i + 1],
+    res.hkl[3 * i + 2],
+  ];
+  const fmt = (h) => h.map((v) => String(v).padStart(4)).join(" ");
+  for (const p of pairs)
+    L.push(
+      `${fmt(hklOf(result, p.a))}     |  ${fmt(hklOf(result2, p.b))}` +
+        `      ${p.dq.toFixed(5)}` +
+        `      ${((100 * result.intensity[p.a]) / maxA).toFixed(2)}` +
+        `      ${((100 * result2.intensity[p.b]) / maxB).toFixed(2)}`,
+    );
+  for (const i of onlyA) L.push(`${fmt(hklOf(result, i))}     |`);
+  for (const i of onlyB) L.push(`              |  ${fmt(hklOf(result2, i))}`);
+  download(stem() + "_coincidences.txt", new Blob([L.join("\n") + "\n"], { type: "text/plain" }));
 }
 
 function saveTable() {
@@ -458,6 +630,14 @@ function syncRows() {
   show("rowThickness", st.mode === "saed");
   show("rowZones", st.mode === "saed");
   show("rowTtMax", st.mode === "powder");
+  show("rowMerge", st.mode === "powder");
+  // The comparison belongs to the section view: a powder trace is rotation
+  // invariant, and SAED has its own beam-parallel geometry to keep straight.
+  const compare = st.mode === "section";
+  show("grpCompare", compare);
+  show("rowTwist", compare && !!second);
+  show("rowMatchTol", compare && !!second);
+  show("matchInfo", compare && !!second);
   $("radiation").disabled = st.mode === "saed";
   if (view) showZoom();
   $("modeNote").textContent =
@@ -529,6 +709,16 @@ function bind() {
   num("kv", "kv");
   num("thickness", "thickness");
   num("ttmax", "ttMax");
+  num("mergeTol", "mergeTol");
+
+  // The match tolerance only re-pairs the two patterns, so it redraws without
+  // a recompute: the sections themselves have not changed.
+  $("matchTol").addEventListener("input", () => {
+    const v = parseFloat($("matchTol").value);
+    if (!Number.isFinite(v) || !(v > 0)) return;
+    st.matchTol = v;
+    draw();
+  });
 
   // Asking for a Laue ring is asking for the resolution that shows it. The
   // rings sit far outside any comfortable d min, so leaving the limit alone
@@ -600,11 +790,73 @@ function bind() {
     if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
   });
 
+  // ---------------------------------------------------- two-crystal compare
+  $("structure2").addEventListener("change", () => {
+    const v = +$("structure2").value;
+    st.secondIndex = v;
+    if (v >= 0) {
+      try {
+        second = new Structure(structures[v]);
+      } catch (err) {
+        second = null;
+        $("status").className = "bad";
+        $("status").textContent = err.message;
+      }
+    } else {
+      second = null;
+    }
+    syncRows();
+    recompute();
+  });
+  $("upload2Btn").addEventListener("click", () => $("cifFile2").click());
+  $("cifFile2").addEventListener("change", (e) => {
+    if (e.target.files[0]) onSecondFile(e.target.files[0]);
+    e.target.value = "";
+  });
+  // The twist only redraws: it rotates the picture, not the model, so there is
+  // nothing to recompute and the slider can stay live while it is dragged.
+  $("twist").addEventListener("input", () => {
+    st.twist = +$("twist").value;
+    $("twistLabel").textContent = `${st.twist.toFixed(1)}°`;
+    draw();
+  });
+  for (const b of document.querySelectorAll("#grpCompare .quickzone button"))
+    b.addEventListener("click", () => {
+      st.twist = +b.dataset.twist;
+      $("twist").value = String(st.twist);
+      $("twistLabel").textContent = `${st.twist.toFixed(1)}°`;
+      draw();
+    });
+  $("chkMatch").addEventListener("change", () => {
+    st.showMatch = $("chkMatch").checked;
+    draw();
+  });
+  $("compareMode").addEventListener("change", () => {
+    st.compareMode = $("compareMode").value;
+    draw();
+  });
+  // Scan the twist and go to the angle that lines the two patterns up best.
+  // This is the question a twinned crystal asks, so the answer is reported with
+  // the count rather than just moving the slider silently.
+  $("findTwist").addEventListener("click", () => {
+    if (!result || !result2) return;
+    const best = bestTwist(result, result2, { tol: st.matchTol });
+    st.twist = best.twist;
+    $("twist").value = String(best.twist);
+    $("twistLabel").textContent = `${best.twist.toFixed(1)}°`;
+    draw();
+    $("status").className = "";
+    $("status").textContent =
+      `best twist ${best.twist.toFixed(1)}° with ${best.count} of ` +
+      `${result.count} reflections coincident (tolerance ${st.matchTol} Å⁻¹)`;
+  });
+
   $("savePng").addEventListener("click", () => {
     if (!result) return;
     view.canvas.toBlob((b) => b && download(stem() + ".png", b));
   });
   $("saveTable").addEventListener("click", saveTable);
+  $("saveMatches").addEventListener("click", saveMatches);
   $("panelToggle").addEventListener("click", () =>
     $("panel").classList.toggle("open"),
   );
@@ -671,6 +923,18 @@ async function boot() {
     o.textContent = s.name;
     sel.appendChild(o);
   });
+  const sel2 = $("structure2");
+  const none = document.createElement("option");
+  none.value = "-1";
+  none.textContent = "none";
+  sel2.appendChild(none);
+  structures.forEach((s, i) => {
+    const o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = s.name;
+    sel2.appendChild(o);
+  });
+  sel2.value = "-1";
   const cmap = $("colormap");
   for (const k of Object.keys(luts)) {
     const o = document.createElement("option");
@@ -701,6 +965,19 @@ async function boot() {
     },
     get result() {
       return result;
+    },
+    get second() {
+      return second;
+    },
+    get result2() {
+      return result2;
+    },
+    /** Load a comparison crystal from a parsed CIF document, or null to clear. */
+    setSecond(doc) {
+      second = doc ? new Structure(doc) : null;
+      st.secondIndex = -1;
+      syncRows();
+      recompute();
     },
     recompute,
     computeSection,

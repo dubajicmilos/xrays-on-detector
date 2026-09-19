@@ -12,6 +12,20 @@
  * radiations. The polarisation factor (1 + cos^2(2 theta)) / 2 is x-rays only:
  * neutrons scatter off nuclei with no polarisation dependence, and it is not
  * meaningful for the electron case here either.
+ *
+ * Two merging rules are available. The default keeps reflections apart when
+ * their d-spacings differ by more than dTol relatively; passing twoThetaTol > 0
+ * merges on a 2theta window instead, which is the instrument's view of what is
+ * resolvable (a relative d rule separates near-degenerate reflections of a
+ * pseudocubic cell at every angle, so the peak count follows the cell size
+ * rather than the resolution).
+ *
+ * When comparing against pymatgen's XRDCalculator, note that it applies no
+ * Debye-Waller damping (its get_pattern takes debye_waller_factors only in some
+ * builds). Either compare with B = 0 throughout, or pass the factors through,
+ * otherwise the comparison is of two different models and the thermal term
+ * shows up as an intensity difference that has nothing to do with the physics
+ * under test.
  */
 
 import { TWO_PI } from "../../js/physics.js";
@@ -25,6 +39,13 @@ export function computePowder(
     fwhm = 0.15,
     nPoints = 2000,
     dTol = 1e-5,
+    // Merge on a 2theta window instead of a relative d-spacing when this is > 0.
+    // Two reflections are then one peak when their 2theta differ by less than
+    // this many degrees, which is how a diffractometer resolves them: a
+    // relative d rule keeps near-degenerate reflections of a pseudocubic cell
+    // apart at every angle, so the peak list grows with the cell size rather
+    // than with what an instrument could actually separate.
+    twoThetaTol = 0,
   } = {},
 ) {
   if (!(wavelength > 0)) throw new Error("wavelength must be positive");
@@ -68,7 +89,11 @@ export function computePowder(
   const peaks = [];
   let group = [rows[0]];
   for (let i = 1; i < rows.length; i++) {
-    if (Math.abs(rows[i].d - rows[i - 1].d) > dTol * rows[i - 1].d) {
+    const split =
+      twoThetaTol > 0
+        ? Math.abs(rows[i].tt - rows[i - 1].tt) > twoThetaTol
+        : Math.abs(rows[i].d - rows[i - 1].d) > dTol * rows[i - 1].d;
+    if (split) {
       peaks.push(group);
       group = [];
     }

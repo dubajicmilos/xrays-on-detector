@@ -310,9 +310,8 @@ export function structureFactors(table, atoms, B, hkl) {
 
 /**
  * |F|^2 for a bare lattice with no structure: an isotropic Debye-Waller
- * falloff only, exp(-2 B_iso (|Q|/4pi)^2). It exists
- * so the app runs on a cell alone. This is not a structure factor and must not
- * be presented as one.
+ * falloff only, exp(-2 B_iso (|Q|/4pi)^2). It exists so the app runs on a
+ * cell alone. This is not a structure factor and must not be presented as one.
  */
 export function latticeStructureFactors(B, hkl, Biso = 1.5) {
   const n = hkl.length / 3;

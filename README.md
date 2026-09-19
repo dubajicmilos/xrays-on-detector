@@ -12,6 +12,25 @@ It stitches together two existing pieces:
 | Structure factors `|F(hkl)|²` and reciprocal lattice (2π convention) | **pytilting** `StructureFactorCalculator` |
 | Six-circle rotation matrices, You (1999) convention | **diffcalc-core** |
 
+## Where each app lives
+
+Two browser apps live in this repository, each with a Python counterpart:
+
+| App | Browser source | Python |
+|---|---|---|
+| Six-circle diffractometer simulation: which reflections are excited, and where their spots land on an area detector | `web/` | `xrays_on_detector/` |
+| Single-crystal diffraction from a CIF: reciprocal-lattice sections, SAED, powder | `web/sc/` | `single_crystal/` |
+
+Both are served from <https://dubajicmilos.github.io/diffraction/>. The
+single-crystal page is at <https://dubajicmilos.github.io/diffraction/single-crystal/>.
+
+`web/sc/` imports shared modules from `web/js/`: the CIF reader
+(`web/js/cif.js`), the reciprocal-lattice code (`web/js/physics.js`) and the
+scattering tables (`web/js/scatter.js`), so a change there affects both apps.
+
+The deployed site carries a copy of `web/` at `assets/diffraction/`. This
+folder is the source of truth: edit here and re-sync the site from it.
+
 ## Physics
 
 Monochromatic beam, `k = 2π/λ`, incident along the lab **+y** axis. The diffcalc
