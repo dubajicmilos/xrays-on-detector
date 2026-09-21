@@ -17,9 +17,10 @@
  *   phi   about +x, the sample normal at zero pitch
  *
  * The detector itself is the shared panel driven by the active Detector
- * frame; the rig only draws the azimuth arc that shows where on the cone the
- * arm stands: from the vertical, sweeping by the azimuth, at the detector's
- * own distance so the arc ends where the panel hangs.
+ * frame; the rig draws the azimuth arc that shows where on the cone the
+ * arm stands (from the vertical, sweeping by the azimuth, at the detector's
+ * own distance so the arc ends where the panel hangs) and the crystal
+ * outline, so pitch, phi and roll visibly turn the sample.
  */
 import * as THREE from "../lib/three.module.js";
 
@@ -88,6 +89,21 @@ export class PitchPhiRig {
     label("pitch", "#f0be46", [D.ringChi * 1.16, 0, 0]);
     label("phi", "#5aa0ff", [D.ringPhi * 1.16, 0, 0]);
 
+    // The crystal itself, as the same outline block the six-circle draws.
+    // The rings are rotationally symmetric, so without this nothing on the
+    // machine moves when pitch or phi is dialled and the sample reads as
+    // welded in place; the outline rides the phi group (world = Z . U) and
+    // turns with every sample axis. The surface slab, shared with the
+    // six-circle, keeps showing the datum plane.
+    this.sampleEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(
+        new THREE.BoxGeometry(D.sample, D.sample * 0.72, D.sample * 0.55),
+      ),
+      new THREE.LineBasicMaterial({ color: 0x7f8db0 }),
+    );
+    this.sampleEdges.matrixAutoUpdate = false;
+    this.gPhi.add(this.sampleEdges);
+
     // detector azimuth arc: from the vertical (azimuth 0) to the arm
     this._arcN = 96;
     const arcGeo = new THREE.BufferGeometry();
@@ -117,14 +133,17 @@ export class PitchPhiRig {
   }
 
   /**
-   * @param pose {angles: {pitch, phi, roll, tt, az}, azSign, centre}
+   * @param pose {angles: {pitch, phi, roll, tt, az}, azSign, centre, U, rings}
    *   centre: the detector panel centre in mm, from the active Detector frame
+   *   U: the zero-angle mount (game frame); the crystal outline rides gPhi,
+   *      so its world matrix is Z . U exactly
    */
   update(pose) {
     const { angles, azSign, centre } = pose;
     this.gRoll.matrix.copy(mat4From3(rotY(angles.roll * DEG)));
     this.gPitch.matrix.copy(mat4From3(rotZ(-angles.pitch * DEG)));
     this.gPhi.matrix.copy(mat4From3(rotX(angles.phi * DEG)));
+    if (pose.U) this.sampleEdges.matrix.copy(mat4From3(pose.U));
 
     // the Circles toggle reaches this rig the same way it reaches the
     // six-circle's rings
