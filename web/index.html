@@ -18,7 +18,7 @@
     <title>The Game of Diffraction</title>
     <meta
       name="description"
-      content="Interactive six-circle single-crystal diffraction simulator: drive the motors, watch the Bragg spots land on the detector."
+      content="Interactive single-crystal diffraction simulators: drive a six-circle goniometer or a pitch–phi surface machine, and watch the Bragg spots land on the detector."
     />
     <meta name="author" content="Miloš Dubajić" />
     <meta name="copyright" content="© 2026 Miloš Dubajić" />
@@ -37,8 +37,23 @@
       <aside id="panel">
         <header class="brand">
           <h1>The Game of Diffraction</h1>
-          <p>A six-circle diffractometer in your browser.</p>
+          <p>A six-circle machine and a pitch–phi surface machine, in your browser.</p>
         </header>
+
+        <section class="grp">
+          <h2>Diffractometer</h2>
+          <div class="row">
+            <label>Machine</label
+            ><select id="instrument" class="grow">
+              <option value="sixc">Six-circle</option>
+              <option value="pp">Pitch–phi (surface)</option>
+            </select>
+          </div>
+          <p class="hint" id="instrumentHint">
+            Six circles: sample on a (mu, eta, chi, phi) cradle, detector on a
+            (delta, gamma) arm.
+          </p>
+        </section>
 
         <section class="grp">
           <h2>Beam and detector</h2>
@@ -102,7 +117,7 @@
           </div>
         </section>
 
-        <section class="grp">
+        <section class="grp six-only">
           <h2>Scattering geometry</h2>
           <label class="radio"
             ><input type="radio" name="mode" value="transmission" checked />
@@ -158,7 +173,140 @@
           <div class="readout" id="cellInfo">–</div>
         </section>
 
-        <section class="grp">
+        <section class="grp pp-only hidden">
+          <h2>Pitch–phi angles</h2>
+          <div id="ppMotorRows"></div>
+          <p class="hint">
+            pitch: incidence angle from the surface, 0° grazing to 90° normal
+            (beyond ±90° the sample is flipped, and the solutions say so). φ:
+            about the sample normal at pitch 0. roll: about the beam, moves
+            the azimuth only. 2θ/az put the detector: azimuth 0 is up,
+            positive to the right looking downstream.
+          </p>
+        </section>
+
+        <section class="grp pp-only hidden">
+          <h2>Drive to a reflection</h2>
+          <div class="align">
+            <input type="number" id="ppH" value="1" class="idx" step="any" aria-label="h" />
+            <input type="number" id="ppK" value="0" class="idx" step="any" aria-label="k" />
+            <input type="number" id="ppL" value="0" class="idx" step="any" aria-label="l" />
+            <button id="ppFind" class="grow">Find pitch &amp; φ</button>
+          </div>
+          <label class="radio"
+            ><input type="radio" name="ppMode" value="alpha" checked /> fix
+            pitch, solve φ</label
+          >
+          <label class="radio"
+            ><input type="radio" name="ppMode" value="phi" /> fix φ, solve
+            pitch</label
+          >
+          <label class="radio"
+            ><input type="radio" name="ppMode" value="explore" /> explore (set
+            both, read the error)</label
+          >
+          <div class="hint" id="ppModeHint"></div>
+          <select id="ppSols" class="wide"></select>
+          <div class="align">
+            <button id="ppDrive" class="grow">Drive there</button>
+            <button id="ppAim" class="grow">Point detector there</button>
+          </div>
+          <div class="readout" id="ppMsg"></div>
+          <div class="cards" id="ppCards"></div>
+        </section>
+
+        <section class="grp pp-only hidden">
+          <h2>Batch (one h k l per line)</h2>
+          <textarea id="ppBatch" rows="5" spellcheck="false">1 0 0
+1 1 0
+2 0 0
+1/2 1/2 1/2</textarea>
+          <div class="hint">
+            Solved with the same mode and fixed angle as the box above;
+            fractions allowed. One row per solution.
+          </div>
+          <button id="ppCopy" class="wide">Copy table as TSV</button>
+          <div class="tblwrap"><table id="ppTable" class="btable"></table></div>
+        </section>
+
+        <section class="grp pp-only hidden">
+          <h2>Motor read-outs</h2>
+          <div class="row">
+            <label>pitch dial</label>
+            <select id="ppPSign"><option value="1">+1</option><option value="-1">−1</option></select>
+            <span class="u">· α +</span>
+            <input type="number" id="ppPOff" value="0" class="grow" step="any" />
+          </div>
+          <div class="row">
+            <label>φ dial</label>
+            <select id="ppFSign"><option value="1">+1</option><option value="-1">−1</option></select>
+            <span class="u">· φ +</span>
+            <input type="number" id="ppFOff" value="0" class="grow" step="any" />
+          </div>
+          <div class="row">
+            <label>Azimuth positive</label>
+            <select id="ppAzSign" class="grow">
+              <option value="1">toward −x (right looking downstream)</option>
+              <option value="-1">toward +x (left)</option>
+            </select>
+          </div>
+          <p class="hint">
+            The dials the operator reads: readout = s·angle + offset, set per
+            your instrument. The simulator runs in geometry angles; the
+            solution list shows both.
+          </p>
+        </section>
+
+        <section class="grp pp-only hidden">
+          <h2>Mounting (pitch = φ = 0)</h2>
+          <div class="row">
+            <label>Surface (hkl)</label>
+            <input type="number" id="ppSH" value="0" class="idx" />
+            <input type="number" id="ppSK" value="0" class="idx" />
+            <input type="number" id="ppSL" value="1" class="idx" />
+          </div>
+          <div class="row">
+            <label>In-plane ref</label>
+            <input type="number" id="ppRH" value="1" class="idx" />
+            <input type="number" id="ppRK" value="0" class="idx" />
+            <input type="number" id="ppRL" value="0" class="idx" />
+          </div>
+          <div class="row">
+            <label>Ref type</label>
+            <select id="ppRKind" class="grow">
+              <option value="hkl">(hkl) reciprocal</option>
+              <option value="uvw">[uvw] real</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Ref points</label>
+            <select id="ppRDir" class="grow">
+              <option value="+x">+x (left, looking downstream)</option>
+              <option value="-x">−x (right)</option>
+              <option value="+z">+z (downstream)</option>
+              <option value="-z">−z (upstream)</option>
+            </select>
+          </div>
+          <button id="ppMount" class="wide">Mount surface normal vertical</button>
+          <div class="readout" id="ppMountMsg"></div>
+          <div class="row">
+            <label>UB (zero angles)</label>
+            <select id="ppUBConv" class="grow">
+              <option value="2pi">2π |a*| = 2π/a</option>
+              <option value="1d">1/d |a*| = 1/a</option>
+              <option value="lambda">λ-scaled |a*| = λ/a</option>
+            </select>
+            <button id="ppUBCopy">Copy</button>
+          </div>
+          <pre id="ppUB" class="matrix"></pre>
+          <p class="hint">
+            This machine's native frame at zero angles (+y up, +z beam, +x
+            left); columns are a*, b*, c*. The six-circle panel shows its own
+            UB in its own frame — the two are different datums.
+          </p>
+        </section>
+
+        <section class="grp six-only">
           <h2>Crystal orientation</h2>
           <p class="hint">
             Tilt the crystal on its mount (rotations in the phi frame)
@@ -250,7 +398,7 @@
           <pre id="ub" class="matrix"></pre>
         </section>
 
-        <section class="grp">
+        <section class="grp six-only">
           <h2>Motors</h2>
           <div id="motorRows"></div>
           <div class="row">
@@ -271,7 +419,7 @@
           </div>
         </section>
 
-        <section class="grp">
+        <section class="grp six-only">
           <h2>Drive to a reflection</h2>
           <div class="align">
             <input type="number" id="dh" value="1" class="idx" /><input

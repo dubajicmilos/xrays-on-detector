@@ -39,7 +39,7 @@ const COL = {
 };
 
 /** Matrix4 from a row-major 3x3 rotation. */
-function mat4From3(m) {
+export function mat4From3(m) {
   const M = new THREE.Matrix4();
   M.set(
     m[0][0],
@@ -63,7 +63,7 @@ function mat4From3(m) {
 }
 
 /** A text label that always faces the camera. */
-function makeLabel(text, color = "#dfe6f5", size = 44) {
+export function makeLabel(text, color = "#dfe6f5", size = 44) {
   const pad = 8;
   const c = document.createElement("canvas");
   const ctx = c.getContext("2d");
@@ -275,6 +275,17 @@ export class InstrumentScene {
     this._lights();
     this._build();
     this.resize();
+  }
+
+  /**
+   * Hang the pitch-phi rig in the scene.
+   *
+   * The rig is built by its own module (the two machines are different
+   * hardware, so each gets its own drawing); it is handed in here only so
+   * the shared per-frame label scaling in render() reaches its sprites.
+   */
+  attachPpRig(rig) {
+    this.ppRig = rig;
   }
 
   _lights() {
@@ -704,6 +715,9 @@ export class InstrumentScene {
       this.surface.visible = false;
       this.sample.visible = true;
     }
+    // the six-circle block's edge wireframe rides the six-circle goniometer
+    // only; on the pitch-phi floor that block is hardware that is not there
+    this.sampleEdges.visible = st.rig !== "pp";
 
     if (st.crystalAxes) this.gizmoCry.setDirections(st.crystalAxes);
 
@@ -715,10 +729,13 @@ export class InstrumentScene {
     }
 
     const vis = st.show;
+    // the six-circle rings are six-circle hardware: on the pitch-phi floor
+    // they must not stand around pretending to be that machine's circles
+    const sixc = st.rig !== "pp";
     for (const r of [this.ringMu, this.ringEta, this.ringChi, this.ringPhi])
-      r.visible = vis.rings;
+      r.visible = vis.rings && sixc;
     for (const k of Object.keys(this.ringLabels))
-      this.ringLabels[k].visible = vis.rings;
+      this.ringLabels[k].visible = vis.rings && sixc;
     this.floor.visible = vis.floor;
     this.gizmoCry.group.visible = vis.axes;
     this.gizmoCry.title.visible = vis.axes;
@@ -880,7 +897,9 @@ export class InstrumentScene {
     const vh = Math.max(this.canvas.clientHeight, 1);
     const fovT = Math.tan((this.camera.fov * Math.PI) / 360);
     const k = (2 * 15 * this.controls.distance * fovT) / vh;
-    for (const s of [...Object.values(this.ringLabels), this.detLabel]) {
+    const sprites = [...Object.values(this.ringLabels), this.detLabel];
+    if (this.ppRig) sprites.push(...this.ppRig.labels());
+    for (const s of sprites) {
       if (s) s.scale.set(k * (s.userData.aspect || 2), k, 1);
     }
     // the frame triads carry bigger text than the machine labels

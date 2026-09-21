@@ -79,12 +79,16 @@ __BUTTON_CSS__---
 
 Try the game, made using
 [xrays_on_detector](https://github.com/dubajicmilos/xrays-on-detector), an
-open-source package for six-circle diffraction.
+open-source package for six-circle diffraction, with a second machine built
+in: a pitch–phi surface diffractometer whose sample angles and detector
+position (2θ, azimuth) are solved the same way.
 
 You are free to reorient the sample, drive the goniometer circles, change the
 detector model and its distance, and tune the X-ray energy, then watch the
 diffraction pattern each configuration produces for a range of crystals. You
-can also drive the detector arm onto a particular hkl reflection.
+can also drive the detector arm onto a particular hkl reflection. The
+**Diffractometer** selector in the control panel switches between the
+six-circle machine and the pitch–phi one.
 
 <div class="game-shell">
   <iframe src="{{ '/assets/diffraction/index.html' | relative_url }}"
@@ -101,7 +105,7 @@ layout: page
 permalink: /diffraction/guide/
 title: How to use
 nav: false
-description: A guide to The Game of Diffraction, its panels, circles and controls.
+description: A guide to both machines of The Game of Diffraction and their panels and controls.
 _styles: >
 __BUTTON_CSS__---
 
@@ -149,6 +153,39 @@ The simulator follows the six-circle convention of
 | mu, omega, chi, phi | Sample | Nested goniometer rotations that orient the lattice in space |
 | delta | Detector | Swings the arm through the vertical arc |
 | gamma | Detector | Swings the arm through the horizontal arc |
+
+## The second machine: pitch–phi
+
+The **Diffractometer** selector at the top of the control panel switches the
+floor to a surface machine: a pitch cradle carrying a φ spindle for the
+sample, and a detector placed by a scattering angle 2θ and an azimuth about
+the beam. Structure, energy, detector model and the panel are shared; only
+the angle set changes.
+
+| Angle | Moves | Meaning |
+|---|---|---|
+| pitch | Sample | Incidence angle from the surface: 0° grazing, 90° normal |
+| φ | Sample | Right-handed about the sample normal at pitch 0 |
+| roll | Sample | About the beam; shifts the azimuth only, never the Bragg condition |
+| 2θ | Detector | Scattering angle from the beam |
+| az | Detector | Position around the beam: 0 is up, positive to the right looking downstream |
+
+- **Find pitch & φ.** Three modes: fix the pitch and solve φ, fix φ and solve
+  pitch, or explore freely with the excitation error shown. Solutions list
+  the dial read-outs, 2θ and azimuth; **Drive there** applies the exact
+  angles and **Point detector there** swings the panel onto wherever the
+  reflection scatters.
+- **What shows.** The machine works on a surface: a reflection appears only
+  when the incident and diffracted beams both stay above it, and the cards
+  say when one would not.
+- **Dials.** The read-outs section maps geometry angles onto your
+  instrument's dials (sign and offset): readout = s·angle + offset.
+- **Mounting.** The mounting block sends a chosen surface normal to the
+  vertical at pitch = φ = 0 and prints the UB matrix in this machine's native
+  frame — different from the six-circle panel's frame, which stays its own.
+
+Each machine keeps its own mount, angles and detector position; switching
+back and forth does not reinterpret either.
 
 ## Beam and detector
 
