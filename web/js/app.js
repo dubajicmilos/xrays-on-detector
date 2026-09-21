@@ -504,6 +504,7 @@ function simulatePp() {
       angles: st.pp.angles,
       azSign: st.pp.cal.azSign,
       centre: frame.centre,
+      U: st.pp.U,
       rings: st.show.rings,
     });
   if (ppDeck) ppDeck.sync();
