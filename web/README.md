@@ -1,8 +1,9 @@
 # The Game of Diffraction (browser build)
 
 A client-side port of the `xrays_on_detector` simulator: a six-circle
-diffractometer you drive in a browser. Everything runs in the visitor's tab, so
-the site is static and there is no backend.
+diffractometer and a pitch–phi surface diffractometer you drive in a browser.
+Everything runs in the visitor's tab, so the site is static and there is no
+backend.
 
 **Live:** <https://dubajicmilos.github.io/diffraction/>
 
@@ -22,6 +23,9 @@ physics is only ~700 lines of linear algebra. Porting the physics too buys a
 | `js/render.js` | frame rendering (Gaussian spots), colour mapping, ray geometry |
 | `js/scene.js` | Three.js scene, own orbit/pinch controls |
 | `js/app.js` | state, controls, the simulate loop |
+| `js/pitchphi.js` | the pitch–phi surface machine: sample (pitch, φ), detector (2θ, azimuth), solvers — ported from the verified standalone calculator |
+| `js/pitchphi-deck.js` | its control deck: solve modes, solution list, batch table, dial calibration, mounting |
+| `js/pitchphi-scene.js` | its Three.js rig: roll/pitch/φ rings and the detector azimuth arc |
 | `js/cif.js` | CIF reader with symmetry expansion to P1, shared with `sc/` |
 | `js/scatter.js` | scattering tables for X-rays, neutrons and electrons (used by `sc/`) |
 | `js/credit.js` | the authorship notice, on screen and in the console |
@@ -30,6 +34,7 @@ physics is only ~700 lines of linear algebra. Porting the physics too buys a
 | `lib/three.module.js` | vendored Three.js r169 (see the naming note below) |
 | `data/*.json` | generated: form factors, colour maps, bundled structures, neutron and electron tables |
 | `test/parity.mjs`, `test/parity_sc.mjs` | Node harnesses comparing the JS against Python fixtures |
+| `test/parity_pp.mjs`, `test/fixtures_pp.json` | the pitch–phi module against the standalone tool's recorded browser outputs |
 
 `../tools/export_web_data.py` generates the X-ray form factors, colour maps,
 bundled structures and `test/fixture.json`; `../tools/export_scattering.py`
@@ -54,10 +59,10 @@ ES modules and `fetch` do not work from `file://`, so it must be served over
 http.
 
 The page exposes a scripting handle, `window.diffractionGame`, with
-`{state, simulate, scene, physics, setAngles, render}`. It exists so the app can
-be driven without waiting on animation frames (useful when a headless or hidden
-browser never fires `requestAnimationFrame`), and so anyone can script the
-instrument from the console.
+`{state, simulate, scene, physics, setAngles, setInstrument, pitchPhi, render}`.
+It exists so the app can be driven without waiting on animation frames (useful
+when a headless or hidden browser never fires `requestAnimationFrame`), and so
+anyone can script the instrument from the console.
 
 ## Verifying it
 
@@ -65,6 +70,7 @@ instrument from the console.
 python tools/export_web_data.py    # regenerate fixtures from the Python
 node web/test/parity.mjs           # 30 groups, JS vs Python
 node web/test/parity_sc.mjs        # the single-crystal viewer
+node web/test/parity_pp.mjs        # pitch–phi vs the standalone tool's recorded run
 ```
 
 The harness compares circle matrices, B matrices, `|F(hkl)|²` against pytilting,
@@ -73,6 +79,13 @@ hkl, `khat`, `eps`, excitation, 2θ, polarization), `rotationBetween`/`eulerMatr
 the align tools, UB in all three conventions, and every solver. Largest
 deviation anywhere is 2e-10, which is the bisection tolerance; the rest sit at
 machine precision.
+
+`parity_pp.mjs` is a second kind of check: it recomputes the pitch–phi
+machine's numbers with `js/pitchphi.js` and compares them against what the
+standalone calculator the user wrote actually returned, case by case --
+199 cases across cells, orientations, the specular family, near-tangency
+edges and roll probes, recorded from a real browser before this port existed
+(`fixtures_pp.json` is that recording).
 
 Terser-minified output was checked through the same harness and still passes, so
 the site's build step does not change the numbers.

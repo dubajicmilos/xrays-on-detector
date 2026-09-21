@@ -291,6 +291,102 @@ button:focus-visible {
   color: #b9f0d4;
 }
 
+/* pitch–phi deck: cards, batch table, batch textarea */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 7px;
+}
+.cards .stat {
+  background: #10141f;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 5px;
+  min-width: 0;
+}
+.cards .k {
+  display: block;
+  font-size: 10px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cards .v {
+  font:
+    600 12px Consolas,
+    ui-monospace,
+    monospace;
+}
+.cards .u {
+  color: var(--dim);
+  font-size: 10px;
+}
+
+textarea {
+  width: 100%;
+  background: #10141f;
+  color: var(--text);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font:
+    11.5px/1.5 Consolas,
+    ui-monospace,
+    monospace;
+  resize: vertical;
+  min-width: 0;
+}
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.tblwrap {
+  max-height: 240px;
+  overflow: auto;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+table.btable {
+  border-collapse: collapse;
+  width: 100%;
+  font:
+    10.5px Consolas,
+    ui-monospace,
+    monospace;
+}
+table.btable th,
+table.btable td {
+  text-align: right;
+  padding: 2.5px 5px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+table.btable th {
+  position: sticky;
+  top: 0;
+  background: var(--panel2);
+  color: var(--dim);
+  font-weight: 600;
+}
+table.btable td:first-child,
+table.btable th:first-child {
+  text-align: left;
+}
+table.btable tr.bad td {
+  color: #8b95ad;
+}
+table.btable tr.bad td.st {
+  color: var(--warn);
+}
+table.btable tr.good td.st {
+  color: var(--good);
+}
+
 .tiny {
   color: #5d6884;
   font-size: 10.5px;

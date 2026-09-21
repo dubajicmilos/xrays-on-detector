@@ -13,6 +13,9 @@ import { blockedGeometry, paint, rayGeometry, renderFrame } from "./render.js";
 import { CifError, parseCif, setElements } from "./cif.js";
 import { InstrumentScene } from "./scene.js";
 import { CREDIT, logCredit, mountCredit } from "./credit.js";
+import * as PP from "./pitchphi.js";
+import { PitchPhiDeck } from "./pitchphi-deck.js";
+import { PitchPhiRig } from "./pitchphi-scene.js";
 
 const HC = 12.398419843320026; // keV.Angstrom
 
@@ -88,6 +91,21 @@ const st = {
   },
   polarization: "horizontal",
   nSigma: 4,
+  // Which machine is on the floor. The six-circle state above (angles, U,
+  // Ubase, rot) stays exactly what it always was; the pitch-phi machine
+  // keeps its own angles and its own zero-angle mount, because the two are
+  // different physical datums and silently reinterpreting one as the other
+  // would be a lie about the instrument.
+  instrument: "sixc",
+  pp: {
+    angles: { pitch: 5, phi: 0, roll: 0, tt: 20, az: 0 },
+    U: null, // set from st.U on first entry; then owned by the deck's mount
+    init: false,
+    cal: { pSign: 1, pOff: 0, fSign: 1, fOff: 0, azSign: 1 },
+    mode: "alpha",
+    target: [1, 0, 0],
+    sols: [],
+  },
 };
 
 let scene, tables, luts, structures;
@@ -98,6 +116,8 @@ const motorRows = {},
   rotRows = {};
 const spinning = new Set();
 let chiTarget = null;
+let ppRig = null,
+  ppDeck = null;
 
 // ---------------------------------------------------------------- helpers
 
@@ -112,9 +132,39 @@ function detector(bin = st.bin, angles = st.angles) {
   }).binned(bin);
 }
 
-/** The largest |Q| the panel reaches with the arm at `angles`. */
+/**
+ * The pitch-phi panel, expressed as the shared Detector.
+ *
+ * The instrument places its panel by (2theta, azimuth); the direction is all
+ * the simulation needs from that, and the panel's own basis then keeps the
+ * site's convention (slow axis as vertical as the arm allows, fast axis to
+ * the viewer's right looking downstream) -- the same convention the
+ * standalone tool draws, stated here as the virtual-panel convention rather
+ * than a claim about the real machine's panel spin, which the tool does not
+ * specify.
+ */
+function ppAnglesToDetector(angles = st.pp.angles) {
+  const kh = PP.ppToGame(PP.detectorDir(angles.tt, angles.az, st.pp.cal.azSign));
+  const { delta, gamma } = P.detectorAnglesFor(kh);
+  return new P.Detector({
+    distance: st.distance,
+    nFast: st.nFast,
+    nSlow: st.nSlow,
+    pixelSize: st.pixelSize,
+    nu: gamma,
+    delta,
+  });
+}
+
+/** The panel as the active machine stands, binned for display. */
+const activeDetector = (bin = st.bin) =>
+  st.instrument === "pp" ? ppAnglesToDetector().binned(bin) : detector(bin);
+
+/** The largest |Q| the active panel reaches with the machine where it is. */
 const qmaxAt = (angles = st.angles) =>
-  detector(1, angles).maxQmax(st.wavelength);
+  (st.instrument === "pp" ? ppAnglesToDetector() : detector(1, angles)).maxQmax(
+    st.wavelength,
+  );
 
 /**
  * The most the list may hold. The structure-factor sum costs one term per
@@ -212,6 +262,13 @@ function simulate() {
   // the arm out and is only cut back by a real geometry change.
   if (needRebuild || !st.hkl) rebuildReflections();
   else growReflections(qmaxAt());
+
+  // the second machine runs the same list through its own pose and its own
+  // visibility rule; everything downstream of the pose is shared
+  if (st.instrument === "pp") {
+    simulatePp();
+    return;
+  }
 
   const det = detector();
   const { mu, eta, chi, phi } = st.angles;
@@ -326,6 +383,133 @@ function subset(r, idx) {
   return out;
 }
 
+// ------------------------------------------------------------- pitch–phi
+
+/** Z·U of the pitch-phi machine, in the shared lab frame. */
+function ppZUE() {
+  const a = st.pp.angles;
+  return P.matMul(PP.sampleMatrixGame(a.pitch, a.phi, a.roll), st.pp.U);
+}
+
+/**
+ * Unit surface normal of the pitch-phi sample, in the shared lab frame.
+ *
+ * The machine's surface definition: the sample surface is the plane whose
+ * normal is +y_pp at zero angles, lifted by pitch and roll (φ is about that
+ * normal and cannot move it). The solver in pitchphi.js works in the same
+ * datum, which is why solutions and this visibility filter always agree;
+ * the mounting block is what ties a chosen crystal plane to this datum, and
+ * the crystal-axes gizmo shows how the two relate.
+ */
+function surfaceNormalPpLab() {
+  const a = st.pp.angles;
+  return PP.ppToGame(PP.surfaceNormal(a.pitch, a.roll));
+}
+
+/**
+ * One frame of the pitch-phi machine through the shared pipeline.
+ *
+ * Same pipeline as the six-circle by design -- excite() over the shared
+ * reflection list, the shared panel renderer, ray bundles, detector pane,
+ * hover readouts -- but with the machine's own pose and its own visibility
+ * rule: the standalone tool's ok flag, verbatim (incidence between 0 and
+ * 90 degrees and the exit angle above the surface, otherwise the reflection
+ * is drawn as blocked, not on the panel).
+ */
+function simulatePp() {
+  const det = ppAnglesToDetector().binned(st.bin);
+  const ZU = ppZUE();
+  let refl = P.excite({
+    Qcryst: st.Qcryst,
+    F2: st.F2,
+    hkl: st.hkl,
+    ZU,
+    wavelength: st.wavelength,
+    sigma: st.sigma,
+    nSigma: st.nSigma,
+  });
+  const nNear = refl.count;
+
+  const n = surfaceNormalPpLab();
+  const ainc = PP.wrap(st.pp.angles.pitch);
+  const alphaOk = ainc > 0 && ainc <= 90;
+  let blockedFlat = null,
+    nBlocked = 0;
+  if (refl.count) {
+    const keep = [],
+      drop = [];
+    for (let i = 0; i < refl.count; i++) {
+      const beta =
+        refl.khat[3 * i] * n[0] +
+        refl.khat[3 * i + 1] * n[1] +
+        refl.khat[3 * i + 2] * n[2];
+      (alphaOk && beta > 0 ? keep : drop).push(i);
+    }
+    blockedFlat = new Float64Array(drop.length * 3);
+    drop.forEach((i, j) => {
+      blockedFlat[3 * j] = refl.khat[3 * i];
+      blockedFlat[3 * j + 1] = refl.khat[3 * i + 1];
+      blockedFlat[3 * j + 2] = refl.khat[3 * i + 2];
+    });
+    nBlocked = drop.length;
+    refl = subset(refl, keep);
+  }
+
+  const { image, table } = renderFrame(det, refl, {
+    wavelength: st.wavelength,
+    sigma: st.sigma,
+    polarizationMode: st.polarization,
+    minSigmaPx: 1.0,
+  });
+
+  paint(detCanvas, image, det.nFast, det.nSlow, luts[st.cmap], {
+    log: st.log,
+    gain: st.gain,
+  });
+  fitDetectorCanvas(det);
+  scene.touchDetectorImage();
+  st.lastDet = det;
+  st.lastTable = table;
+  drawDetectorOverlay(det, table);
+
+  const missLen = 1.55 * Math.max(st.distance, 60);
+  const rays = rayGeometry(det, refl, table, missLen, {
+    log: st.log,
+    gain: st.gain,
+  });
+  rays.block = blockedFlat
+    ? blockedGeometry(blockedFlat, nBlocked, missLen * 0.5)
+    : new Float32Array(0);
+
+  scene.setSceneScale(st.distance);
+  const A = P.aMatrix(st.B);
+  const axes = [0, 1, 2].map((j) =>
+    P.unit(P.matVec(ZU, [A[0][j], A[1][j], A[2][j]])),
+  );
+
+  const frame = det.frame();
+  scene.update({
+    angles: { mu: 0, eta: 0, chi: 0, phi: 0 }, // the six-circle rig parks
+    U: st.U,
+    rig: "pp",
+    detector: det,
+    frame,
+    rays,
+    crystalAxes: axes,
+    surface: { normal: n },
+    show: st.show,
+  });
+  if (ppRig)
+    ppRig.update({
+      angles: st.pp.angles,
+      azSign: st.pp.cal.azSign,
+      centre: frame.centre,
+      rings: st.show.rings,
+    });
+  if (ppDeck) ppDeck.sync();
+  updateReadouts(det, table, nNear, refl.count, nBlocked, ainc);
+}
+
 // ---------------------------------------------------------------- readouts
 
 function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
@@ -367,7 +551,10 @@ function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
     `α=${al.toFixed(2)} β=${be.toFixed(2)} γ=${ga.toFixed(2)}°` +
     `\n${st.atoms.length} atoms, |F(hkl)|² from atomic form factors`;
 
-  refreshUB();
+  // the UB matrix in this panel belongs to the six-circle mount, which is
+  // what the readout means; the pitch-phi deck displays its own zero-angle
+  // UB in its own (native) frame, so this one must not impersonate it
+  if (st.instrument === "sixc") refreshUB();
 }
 
 function refreshUB() {
@@ -546,6 +733,49 @@ function rebaseOrientation() {
   st.Ubase = st.U.map((r) => r.slice());
   for (const k of ["rx", "ry", "rz"]) rotRows[k].set(0, true);
   st.rot = { rx: 0, ry: 0, rz: 0 };
+}
+
+const SIXC_HINT =
+  "Six circles: sample on a (mu, eta, chi, phi) cradle, detector on a " +
+  "(delta, gamma) arm.";
+const PP_HINT =
+  "Surface machine: sample on a pitch cradle and a φ spindle, detector on " +
+  "(2θ, azimuth). α is the incidence angle from the surface.";
+
+/**
+ * Move the second machine onto the floor, or the first one back.
+ *
+ * Each machine's settings are kept (angles, mount, detector drive), so
+ * switching back and forth is free; nothing is reinterpreted between them.
+ * Anything moving is stopped first: a spin or an eased move belongs to the
+ * machine it was started on, and letting it run against the other one's
+ * state would fight over whose angles mean what.
+ */
+function setInstrument(name) {
+  if (name === st.instrument) return;
+  for (const n of [...spinning]) motorRows[n].run.click();
+  stopAnim();
+  st.instrument = name;
+  if (name === "pp" && !st.pp.init) {
+    // First entry: the crystal starts on the same nominal mount it had on
+    // the six-circle; the deck's mounting block re-mounts it properly, and
+    // the two mounts are then saved independently.
+    st.pp.U = st.U.map((r) => r.slice());
+    st.pp.init = true;
+  }
+  $("instrument").value = name;
+  $("instrumentHint").textContent = name === "pp" ? PP_HINT : SIXC_HINT;
+  document
+    .querySelectorAll(".six-only")
+    .forEach((el) => el.classList.toggle("hidden", name !== "sixc"));
+  document
+    .querySelectorAll(".pp-only")
+    .forEach((el) => el.classList.toggle("hidden", name !== "pp"));
+  if (ppRig) ppRig.setVisible(name === "pp");
+  if (ppDeck) ppDeck.activate(name === "pp");
+  // the reachable |Q| is the panel's, and the panel changed
+  needRebuild = true;
+  requestSim();
 }
 
 // -- continuous rotation and animated moves
@@ -959,6 +1189,7 @@ function bindInputs() {
   });
 
   $("findOmega").addEventListener("click", findOmega);
+  $("instrument").addEventListener("change", () => setInstrument($("instrument").value));
   $("driveThere").addEventListener("click", () => {
     const opt = $("solutions").selectedOptions[0];
     if (!opt || !opt.dataset.eta) return;
@@ -1268,7 +1499,7 @@ function bindDetectorZoom() {
 function bindDetectorHover() {
   const pane = $("detPane");
   pane.addEventListener("pointermove", (ev) => {
-    const det = detector();
+    const det = activeDetector();
     const r = detCanvas.getBoundingClientRect();
     // CSS position to pixel coordinate: pixel c spans [c, c+1) on screen, so
     // its centre, where the physics puts the pixel, is at c + 0.5.
@@ -1333,11 +1564,19 @@ async function boot() {
   applyStructure(structures[0]);
   buildMotorRows();
   buildRotRows();
+  ppRig = new PitchPhiRig(scene.scene);
+  scene.attachPpRig(ppRig);
+  ppDeck = new PitchPhiDeck(st, { requestSim });
+  ppDeck.build();
   bindInputs();
   bindDetectorZoom();
   bindDetectorHover();
   mountCredit($("panel"));
   logCredit();
+
+  // deep link into a machine: ?instrument=pitchphi (allowlisted values only)
+  if (new URLSearchParams(location.search).get("instrument") === "pitchphi")
+    setInstrument("pp");
 
   new ResizeObserver(() => {
     scene.resize();
@@ -1365,6 +1604,10 @@ async function boot() {
       for (const k of Object.keys(a)) motorRows[k]?.set(a[k], true);
       simulate();
     },
+    setInstrument(name) {
+      setInstrument(name === "pitchphi" ? "pp" : name);
+    },
+    pitchPhi: st.pp,
     render() {
       scene.render();
     },
