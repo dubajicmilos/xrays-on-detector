@@ -333,3 +333,36 @@ export function mountOrientation(nC, refVec, rdir = '+x') {
  * is the site's bMatrix), so |column| = 2*pi/d.
  */
 export const zeroAngleUB = (U, B) => mm(GAME_TO_PP, mm(U, B));
+
+// ---------------------------------------------------------------------------
+// Scene support
+// ---------------------------------------------------------------------------
+
+const transpose3 = (M) => [
+  [M[0][0], M[1][0], M[2][0]],
+  [M[0][1], M[1][1], M[2][1]],
+  [M[0][2], M[1][2], M[2][2]],
+];
+
+/**
+ * Orientation of the sample plate for the scene, in the shared lab frame.
+ *
+ * The plate is the crystal's surface: its thickness must lie along the datum
+ * normal for ANY mount (the surface is a property of the machine; the mount
+ * only says which crystal plane it is), while its in-plane azimuth must be
+ * the crystal's, so phi visibly turns it. Built as: the datum frame (Z, the
+ * mount removed from ZU), the shared slab geometry laid flat (rotZ(-90)
+ * takes its thickness axis onto the normal), spun by the mount's twist about
+ * the normal, which is exactly the crystal's azimuth at zero angles.
+ *
+ * With this, changing phi acts as an exact rotation of the plate about the
+ * datum normal (the twist does not depend on the angles), which is what the
+ * scene must show. test/parity_pp.mjs checks both properties.
+ */
+export function plateOrientation(ZU, U) {
+  const Z = mm(ZU, transpose3(U));
+  const psi = -Math.atan2(U[1][2] - U[2][1], U[1][1] + U[2][2]);
+  // laid flat first (rotZ(-90) takes the slab's thickness axis onto the
+  // normal), then spun about the normal by the mount's twist
+  return mm(mm(Z, rotX(psi)), rotZ(-Math.PI / 2));
+}

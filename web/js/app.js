@@ -496,7 +496,13 @@ function simulatePp() {
     frame,
     rays,
     crystalAxes: axes,
-    surface: { normal: n },
+    // The sample plate rides the crystal's in-plane azimuth but always lies
+    // flat on the datum normal, whatever the mount (see plateOrientation);
+    // turning phi is then an exact rotation of the plate about that normal.
+    surface: {
+      normal: n,
+      orientation: PP.plateOrientation(ZU, st.pp.U),
+    },
     show: st.show,
   });
   if (ppRig)
