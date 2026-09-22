@@ -699,16 +699,25 @@ export class InstrumentScene {
     this._setSegments(this.rayBlock, st.show.missed ? st.rays.block : null);
 
     if (st.surface) {
-      const n = new THREE.Vector3(...st.surface.normal).normalize();
-      const q = new THREE.Quaternion().setFromUnitVectors(
-        new THREE.Vector3(0, 1, 0),
-        n,
-      );
-      this.surface.matrix.compose(
-        new THREE.Vector3(0, 0, 0),
-        q,
-        new THREE.Vector3(1, 1, 1),
-      );
+      if (st.surface.orientation) {
+        // A full orientation, for a machine whose sample plate rides the
+        // crystal frame (the pitch-phi machine): the plate keeps the datum
+        // normal, and its in-plane azimuth is the crystal's, so phi and
+        // roll are visible on the sample itself. The six-circle's slab
+        // keeps the plain quaternion path below.
+        this.surface.matrix.copy(mat4From3(st.surface.orientation));
+      } else {
+        const n = new THREE.Vector3(...st.surface.normal).normalize();
+        const q = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          n,
+        );
+        this.surface.matrix.compose(
+          new THREE.Vector3(0, 0, 0),
+          q,
+          new THREE.Vector3(1, 1, 1),
+        );
+      }
       this.surface.visible = true;
       this.sample.visible = false;
     } else {

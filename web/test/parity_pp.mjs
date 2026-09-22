@@ -110,6 +110,84 @@ function rootSetsMatch(a, b, tol) {
   chk(-1, "mount det", detU, 1, 1e-12);
 }
 
+// -- plate orientation (scene support) ---------------------------------------
+
+{
+  const transpose = (M) => [
+    [M[0][0], M[1][0], M[2][0]],
+    [M[0][1], M[1][1], M[2][1]],
+    [M[0][2], M[1][2], M[2][2]],
+  ];
+  let s = 987654;
+  const rnd = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  const randRot = () => {
+    const q = [rnd() - 0.5, rnd() - 0.5, rnd() - 0.5, rnd() - 0.5];
+    const n = Math.hypot(q[0], q[1], q[2], q[3]);
+    const [w, x, y, z] = q.map((v) => v / n);
+    return [
+      [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+      [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+      [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+    ];
+  };
+  let worstN = 0,
+    worstAng = 0,
+    worstAxis = 0;
+  for (let i = 0; i < 100; i++) {
+    const U = randRot();
+    const pitch = rnd() * 90,
+      phi0 = rnd() * 360 - 180,
+      roll = rnd() * 360 - 180;
+    const ZU0 = mm(PP.sampleMatrixGame(pitch, phi0, roll), U);
+    const plate0 = PP.plateOrientation(ZU0, U);
+    const nPlate = mv(plate0, [0, 1, 0]);
+    const nDatum = PP.ppToGame(PP.surfaceNormal(pitch, roll));
+    worstN = Math.max(
+      worstN,
+      Math.hypot(nPlate[0] - nDatum[0], nPlate[1] - nDatum[1], nPlate[2] - nDatum[2]),
+    );
+    const d = 37.5;
+    const ZU1 = mm(PP.sampleMatrixGame(pitch, phi0 + d, roll), U);
+    const D = mm(PP.plateOrientation(ZU1, U), transpose(plate0));
+    const ang =
+      (Math.acos(Math.max(-1, Math.min(1, (D[0][0] + D[1][1] + D[2][2] - 1) / 2))) * 180) /
+      Math.PI;
+    worstAng = Math.max(worstAng, Math.abs(ang - d));
+    const ax = [D[2][1] - D[1][2], D[0][2] - D[2][0], D[1][0] - D[0][1]];
+    const axn = Math.hypot(ax[0], ax[1], ax[2]);
+    if (axn > 1e-9) {
+      const dot = Math.abs(
+        (ax[0] * nDatum[0] + ax[1] * nDatum[1] + ax[2] * nDatum[2]) / axn,
+      );
+      worstAxis = Math.max(worstAxis, 1 - dot);
+    }
+  }
+  chk(-1, "plate flat on the datum normal", worstN, 0, 1e-12);
+  chk(-1, "phi turns the plate by exactly phi", worstAng, 0, 1e-9);
+  chk(-1, "and about the datum normal", worstAxis, 0, 1e-12);
+
+  // a mounted crystal shows its in-plane reference: the same surface with a
+  // (100) vs a (110) reference must put the plate 45 degrees apart, and both
+  // plates must lie flat
+  const c = (2 * Math.PI) / 5.87;
+  const Bc = [[c, 0, 0], [0, c, 0], [0, 0, c]];
+  const nC = [0, 0, 1];
+  const Ua = mm(PP.PP_TO_GAME, PP.mountOrientation(nC, mv(Bc, [1, 0, 0]), "+x"));
+  const Ub = mm(PP.PP_TO_GAME, PP.mountOrientation(nC, mv(Bc, [1, 1, 0]), "+x"));
+  const pa = PP.plateOrientation(mm(PP.sampleMatrixGame(0, 0, 0), Ua), Ua);
+  const pb = PP.plateOrientation(mm(PP.sampleMatrixGame(0, 0, 0), Ub), Ub);
+  const e1a = [pa[0][0], pa[1][0], pa[2][0]];
+  const e1b = [pb[0][0], pb[1][0], pb[2][0]];
+  const between =
+    (Math.acos(Math.max(-1, Math.min(1, e1a[0] * e1b[0] + e1a[1] * e1b[1] + e1a[2] * e1b[2]))) * 180) /
+    Math.PI;
+  chk(-1, "mount sets the plate azimuth (45 apart)", between, 45, 1e-9);
+  const na = mv(pa, [0, 1, 0]);
+  const nb = mv(pb, [0, 1, 0]);
+  chk(-1, "mounted plate A flat", Math.abs(na[0] - 1), 0, 1e-12);
+  chk(-1, "mounted plate B flat", Math.abs(nb[0] - 1), 0, 1e-12);
+}
+
 // -- the 199 recorded cases ---------------------------------------------------
 
 for (const r of dump.cases) {
