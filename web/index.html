@@ -55,7 +55,234 @@
           </p>
         </section>
 
+        <section class="grp six-only">
+          <h2>Motors</h2>
+          <div id="motorRows"></div>
+          <div class="row">
+            <label>Speed</label>
+            <input
+              type="number"
+              id="speed"
+              step="1"
+              value="30"
+              min="-720"
+              max="720"
+            />
+            <span class="u">°/s</span>
+          </div>
+          <div class="alignline">
+            <button id="stopAll" class="grow">Stop all</button>
+            <button id="zeroAll" class="grow">Zero all</button>
+          </div>
+        </section>
+
+        <section class="grp pp-only hidden">
+          <h2>Pitch–phi angles</h2>
+          <div id="ppMotorRows"></div>
+          <p class="hint">
+            pitch: incidence angle from the surface, 0° grazing to 90° normal
+            (beyond ±90° the sample is flipped, and the solutions say so). φ:
+            about the sample normal at pitch 0. roll: about the beam, moves
+            the azimuth only. 2θ/az put the detector: azimuth 0 is up,
+            positive to the right looking downstream.
+          </p>
+        </section>
+
+        <section class="grp six-only">
+          <h2>Drive to a reflection</h2>
+          <div class="align">
+            <input type="number" id="dh" value="1" class="idx" /><input
+              type="number"
+              id="dk"
+              value="1"
+              class="idx"
+            /><input type="number" id="dl" value="1" class="idx" />
+            <button id="findOmega" class="grow primary">Find omega</button>
+          </div>
+          <select id="solutions" class="wide">
+            <option value="" disabled selected>Press Find omega to list the solutions</option>
+          </select>
+          <div class="readout" id="reachMsg"></div>
+          <div class="align">
+            <button id="driveThere" class="grow primary">Drive there</button>
+            <button id="aimDet" class="grow">Aim detector</button>
+          </div>
+          <button id="moveChi" class="wide" disabled>
+            Move chi into reach
+          </button>
+        </section>
+
+        <section class="grp pp-only hidden">
+          <h2>Drive to a reflection</h2>
+          <div class="align">
+            <input type="number" id="ppH" value="1" class="idx" step="any" aria-label="h" />
+            <input type="number" id="ppK" value="0" class="idx" step="any" aria-label="k" />
+            <input type="number" id="ppL" value="0" class="idx" step="any" aria-label="l" />
+            <button id="ppFind" class="grow primary">Find pitch &amp; φ</button>
+          </div>
+          <label class="radio"
+            ><input type="radio" name="ppMode" value="alpha" checked /> fix
+            pitch, solve φ</label
+          >
+          <label class="radio"
+            ><input type="radio" name="ppMode" value="phi" /> fix φ, solve
+            pitch</label
+          >
+          <label class="radio"
+            ><input type="radio" name="ppMode" value="explore" /> explore (set
+            both, read the error)</label
+          >
+          <div class="hint" id="ppModeHint"></div>
+          <select id="ppSols" class="wide">
+            <option value="" disabled selected>Press Find to list the solutions</option>
+          </select>
+          <div class="align">
+            <button id="ppDrive" class="grow primary">Drive there</button>
+            <button id="ppAim" class="grow">Point detector there</button>
+          </div>
+          <div class="readout" id="ppMsg"></div>
+          <div class="cards" id="ppCards"></div>
+        </section>
+
         <section class="grp">
+          <h2>Sample</h2>
+          <div class="row">
+            <label>Structure</label
+            ><select id="structure" class="grow"></select>
+          </div>
+          <div class="row">
+            <label>Your own</label>
+            <button id="cifPick" class="grow" title="Read a CIF in the browser">
+              Load CIF …
+            </button>
+            <input
+              type="file"
+              id="cifFile"
+              accept=".cif,chemical/x-cif"
+              hidden
+            />
+          </div>
+          <div class="readout hidden" id="cifStatus"></div>
+          <div class="row">
+            <label>Peak width</label
+            ><input
+              type="number"
+              id="sigma"
+              step="0.002"
+              min="0.0005"
+              max="0.5"
+            /><span class="u">Å⁻¹</span>
+          </div>
+          <div class="readout" id="cellInfo">–</div>
+        </section>
+
+        <section class="grp six-only" data-collapsed>
+          <h2>Crystal orientation</h2>
+          <p class="hint">
+            Tilt the crystal on its mount (rotations in the phi frame)
+          </p>
+          <div id="rotRows"></div>
+          <p class="hint">Point a crystal direction somewhere</p>
+
+          <div class="alignblock">
+            <div class="alignline">
+              <span class="tag">point</span>
+              <input
+                type="number"
+                id="a1h"
+                value="1"
+                class="idx"
+                aria-label="h"
+              />
+              <input
+                type="number"
+                id="a1k"
+                value="1"
+                class="idx"
+                aria-label="k"
+              />
+              <input
+                type="number"
+                id="a1l"
+                value="0"
+                class="idx"
+                aria-label="l"
+              />
+              <select id="a1kind" class="kind">
+                <option value="hkl">(hkl) plane normal</option>
+                <option value="uvw">[uvw] direction</option>
+              </select>
+            </div>
+            <div class="alignline">
+              <span class="tag">along</span>
+              <select id="a1t" class="grow"></select>
+              <button id="a1go" class="go primary">Go</button>
+            </div>
+          </div>
+
+          <div class="alignblock">
+            <div class="alignline">
+              <span class="tag">then</span>
+              <input
+                type="number"
+                id="a2h"
+                value="0"
+                class="idx"
+                aria-label="h"
+              />
+              <input
+                type="number"
+                id="a2k"
+                value="0"
+                class="idx"
+                aria-label="k"
+              />
+              <input
+                type="number"
+                id="a2l"
+                value="1"
+                class="idx"
+                aria-label="l"
+              />
+              <select id="a2kind" class="kind">
+                <option value="hkl">(hkl) plane normal</option>
+                <option value="uvw">[uvw] direction</option>
+              </select>
+            </div>
+            <div class="alignline">
+              <span class="tag">toward</span>
+              <select id="a2t" class="grow"></select>
+              <button id="a2go" class="go primary">Go</button>
+            </div>
+          </div>
+          <div class="readout" id="alignMsg"></div>
+          <button id="resetU" class="wide">Reset orientation (U = I)</button>
+          <div class="row">
+            <label>UB</label
+            ><select id="ubConv" class="grow">
+              <option value="2pi">2π |a*| = 2π/a</option>
+              <option value="1/d">1/d |a*| = 1/a</option>
+              <option value="lambda">λ-scaled |a*| = λ/a</option></select
+            ><button id="ubCopy">Copy</button>
+          </div>
+          <pre id="ub" class="matrix"></pre>
+        </section>
+
+        <section class="grp pp-only hidden" data-collapsed>
+          <h2>Batch (one h k l per line)</h2>
+          <textarea id="ppBatch" rows="5" spellcheck="false">1 0 0
+1 1 0
+2 0 0
+1/2 1/2 1/2</textarea>
+          <div class="hint">
+            Solved with the same mode and fixed angle as the box above;
+            fractions allowed. One row per solution.
+          </div>
+          <button id="ppCopy" class="wide">Copy table as TSV</button>
+          <div class="tblwrap"><table id="ppTable" class="btable"></table></div>
+        </section>
+
+        <section class="grp" data-collapsed>
           <h2>Beam and detector</h2>
           <div class="row">
             <label>Wavelength</label
@@ -117,7 +344,7 @@
           </div>
         </section>
 
-        <section class="grp six-only">
+        <section class="grp six-only" data-collapsed>
           <h2>Scattering geometry</h2>
           <label class="radio"
             ><input type="radio" name="mode" value="transmission" checked />
@@ -141,105 +368,17 @@
           </div>
         </section>
 
-        <section class="grp">
-          <h2>Sample</h2>
-          <div class="row">
-            <label>Structure</label
-            ><select id="structure" class="grow"></select>
-          </div>
-          <div class="row">
-            <label>Your own</label>
-            <button id="cifPick" class="grow" title="Read a CIF in the browser">
-              Load CIF …
-            </button>
-            <input
-              type="file"
-              id="cifFile"
-              accept=".cif,chemical/x-cif"
-              hidden
-            />
-          </div>
-          <div class="readout hidden" id="cifStatus"></div>
-          <div class="row">
-            <label>Peak width</label
-            ><input
-              type="number"
-              id="sigma"
-              step="0.002"
-              min="0.0005"
-              max="0.5"
-            /><span class="u">Å⁻¹</span>
-          </div>
-          <div class="readout" id="cellInfo">–</div>
-        </section>
-
-        <section class="grp pp-only hidden">
-          <h2>Pitch–phi angles</h2>
-          <div id="ppMotorRows"></div>
-          <p class="hint">
-            pitch: incidence angle from the surface, 0° grazing to 90° normal
-            (beyond ±90° the sample is flipped, and the solutions say so). φ:
-            about the sample normal at pitch 0. roll: about the beam, moves
-            the azimuth only. 2θ/az put the detector: azimuth 0 is up,
-            positive to the right looking downstream.
-          </p>
-        </section>
-
-        <section class="grp pp-only hidden">
-          <h2>Drive to a reflection</h2>
-          <div class="align">
-            <input type="number" id="ppH" value="1" class="idx" step="any" aria-label="h" />
-            <input type="number" id="ppK" value="0" class="idx" step="any" aria-label="k" />
-            <input type="number" id="ppL" value="0" class="idx" step="any" aria-label="l" />
-            <button id="ppFind" class="grow">Find pitch &amp; φ</button>
-          </div>
-          <label class="radio"
-            ><input type="radio" name="ppMode" value="alpha" checked /> fix
-            pitch, solve φ</label
-          >
-          <label class="radio"
-            ><input type="radio" name="ppMode" value="phi" /> fix φ, solve
-            pitch</label
-          >
-          <label class="radio"
-            ><input type="radio" name="ppMode" value="explore" /> explore (set
-            both, read the error)</label
-          >
-          <div class="hint" id="ppModeHint"></div>
-          <select id="ppSols" class="wide"></select>
-          <div class="align">
-            <button id="ppDrive" class="grow">Drive there</button>
-            <button id="ppAim" class="grow">Point detector there</button>
-          </div>
-          <div class="readout" id="ppMsg"></div>
-          <div class="cards" id="ppCards"></div>
-        </section>
-
-        <section class="grp pp-only hidden">
-          <h2>Batch (one h k l per line)</h2>
-          <textarea id="ppBatch" rows="5" spellcheck="false">1 0 0
-1 1 0
-2 0 0
-1/2 1/2 1/2</textarea>
-          <div class="hint">
-            Solved with the same mode and fixed angle as the box above;
-            fractions allowed. One row per solution.
-          </div>
-          <button id="ppCopy" class="wide">Copy table as TSV</button>
-          <div class="tblwrap"><table id="ppTable" class="btable"></table></div>
-        </section>
-
-        <section class="grp pp-only hidden">
+        <section class="grp pp-only hidden" data-collapsed>
           <h2>Motor read-outs</h2>
           <div class="row">
             <label>pitch dial</label>
-            <select id="ppPSign"><option value="1">+1</option><option value="-1">−1</option></select>
+            <select id="ppPSign" class="sign"><option value="1">+1</option><option value="-1">−1</option></select>
             <span class="u">· α +</span>
             <input type="number" id="ppPOff" value="0" class="grow" step="any" />
           </div>
           <div class="row">
             <label>φ dial</label>
-            <select id="ppFSign"><option value="1">+1</option><option value="-1">−1</option></select>
+            <select id="ppFSign" class="sign"><option value="1">+1</option><option value="-1">−1</option></select>
             <span class="u">· φ +</span>
             <input type="number" id="ppFOff" value="0" class="grow" step="any" />
           </div>
@@ -257,7 +396,7 @@
           </p>
         </section>
 
-        <section class="grp pp-only hidden">
+        <section class="grp pp-only hidden" data-collapsed>
           <h2>Mounting (pitch = φ = 0)</h2>
           <div class="row">
             <label>Surface (hkl)</label>
@@ -306,142 +445,7 @@
           </p>
         </section>
 
-        <section class="grp six-only">
-          <h2>Crystal orientation</h2>
-          <p class="hint">
-            Tilt the crystal on its mount (rotations in the phi frame)
-          </p>
-          <div id="rotRows"></div>
-          <p class="hint">Point a crystal direction somewhere</p>
-
-          <div class="alignblock">
-            <div class="alignline">
-              <span class="tag">point</span>
-              <input
-                type="number"
-                id="a1h"
-                value="1"
-                class="idx"
-                aria-label="h"
-              />
-              <input
-                type="number"
-                id="a1k"
-                value="1"
-                class="idx"
-                aria-label="k"
-              />
-              <input
-                type="number"
-                id="a1l"
-                value="0"
-                class="idx"
-                aria-label="l"
-              />
-              <select id="a1kind" class="kind">
-                <option value="hkl">(hkl) plane normal</option>
-                <option value="uvw">[uvw] direction</option>
-              </select>
-            </div>
-            <div class="alignline">
-              <span class="tag">along</span>
-              <select id="a1t" class="grow"></select>
-              <button id="a1go" class="go">Go</button>
-            </div>
-          </div>
-
-          <div class="alignblock">
-            <div class="alignline">
-              <span class="tag">then</span>
-              <input
-                type="number"
-                id="a2h"
-                value="0"
-                class="idx"
-                aria-label="h"
-              />
-              <input
-                type="number"
-                id="a2k"
-                value="0"
-                class="idx"
-                aria-label="k"
-              />
-              <input
-                type="number"
-                id="a2l"
-                value="1"
-                class="idx"
-                aria-label="l"
-              />
-              <select id="a2kind" class="kind">
-                <option value="hkl">(hkl) plane normal</option>
-                <option value="uvw">[uvw] direction</option>
-              </select>
-            </div>
-            <div class="alignline">
-              <span class="tag">toward</span>
-              <select id="a2t" class="grow"></select>
-              <button id="a2go" class="go">Go</button>
-            </div>
-          </div>
-          <div class="readout" id="alignMsg"></div>
-          <button id="resetU" class="wide">Reset orientation (U = I)</button>
-          <div class="row">
-            <label>UB</label
-            ><select id="ubConv" class="grow">
-              <option value="2pi">2π |a*| = 2π/a</option>
-              <option value="1/d">1/d |a*| = 1/a</option>
-              <option value="lambda">λ-scaled |a*| = λ/a</option></select
-            ><button id="ubCopy">Copy</button>
-          </div>
-          <pre id="ub" class="matrix"></pre>
-        </section>
-
-        <section class="grp six-only">
-          <h2>Motors</h2>
-          <div id="motorRows"></div>
-          <div class="row">
-            <label>Speed</label>
-            <input
-              type="number"
-              id="speed"
-              step="1"
-              value="30"
-              min="-720"
-              max="720"
-            />
-            <span class="u">°/s</span>
-          </div>
-          <div class="alignline">
-            <button id="stopAll" class="grow">Stop all</button>
-            <button id="zeroAll" class="grow">Zero all</button>
-          </div>
-        </section>
-
-        <section class="grp six-only">
-          <h2>Drive to a reflection</h2>
-          <div class="align">
-            <input type="number" id="dh" value="1" class="idx" /><input
-              type="number"
-              id="dk"
-              value="1"
-              class="idx"
-            /><input type="number" id="dl" value="1" class="idx" />
-            <button id="findOmega" class="grow">Find omega</button>
-          </div>
-          <select id="solutions" class="wide"></select>
-          <div class="readout" id="reachMsg"></div>
-          <div class="align">
-            <button id="driveThere" class="grow">Drive there</button>
-            <button id="aimDet" class="grow">Aim detector</button>
-          </div>
-          <button id="moveChi" class="wide" disabled>
-            Move chi into reach
-          </button>
-        </section>
-
-        <section class="grp">
+        <section class="grp" data-collapsed>
           <h2>Display</h2>
           <div class="checks">
             <label
@@ -489,6 +493,11 @@
       <main id="stage">
         <canvas id="view3d"></canvas>
         <div id="legend"></div>
+        <div id="axesInset" aria-hidden="true">
+          <canvas></canvas>
+          <span class="cap">lab</span>
+          <span class="cap">crystal</span>
+        </div>
         <div id="hint3d">
           drag orbit · right-drag or shift-drag pan · wheel zoom
         </div>
@@ -499,12 +508,26 @@
         <div id="detViewport">
           <canvas id="detCanvas"></canvas>
           <div id="detOverlay"></div>
+          <div id="detEmpty" class="hidden"></div>
         </div>
         <div id="detZoom">
           <button id="detZoomOut" title="zoom out">−</button>
           <span id="detZoomLabel">100%</span>
           <button id="detZoomIn" title="zoom in">+</button>
           <button id="detZoomReset" title="fit to pane">fit</button>
+        </div>
+        <div id="detList" class="hidden">
+          <div class="head">
+            <span>On the detector</span><span id="detListCount"></span>
+          </div>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr><th>hkl</th><th>2θ (°)</th><th>d (Å)</th><th>I (%)</th></tr>
+              </thead>
+              <tbody id="detRows"></tbody>
+            </table>
+          </div>
         </div>
         <div id="detInfo">–</div>
       </section>

@@ -126,24 +126,7 @@ export function computePowder(
   if (top > 0)
     for (let i = 0; i < intensity.length; i++) intensity[i] *= 100 / top;
 
-  const x = new Float64Array(nPoints);
-  const y = new Float64Array(nPoints);
-  const sigma = fwhm / (2 * Math.sqrt(2 * Math.LN2));
-  for (let i = 0; i < nPoints; i++) x[i] = (ttMax * i) / (nPoints - 1);
-  // A Gaussian is dead beyond four sigma, so each peak only touches the points
-  // near it; painting the whole trace per peak is what makes this slow.
-  const step = ttMax / (nPoints - 1);
-  for (let i = 0; i < peaks.length; i++) {
-    const I = intensity[i];
-    if (I < 1e-6) continue;
-    const lo = Math.max(0, Math.floor((twoTheta[i] - 4 * sigma) / step));
-    const hi = Math.min(
-      nPoints - 1,
-      Math.ceil((twoTheta[i] + 4 * sigma) / step),
-    );
-    for (let j = lo; j <= hi; j++)
-      y[j] += I * Math.exp(-0.5 * ((x[j] - twoTheta[i]) / sigma) ** 2);
-  }
+  const { x, y } = powderProfile(twoTheta, intensity, ttMax, fwhm, nPoints);
 
   return {
     count: peaks.length,
@@ -154,7 +137,38 @@ export function computePowder(
     hkl: hklOut,
     x,
     y,
+    fwhm,
     wavelength,
     radiation,
   };
+}
+
+/**
+ * The trace: a Gaussian of `fwhm` degrees for every peak, sampled at
+ * `nPoints` from 2theta = 0 to `ttMax`.
+ *
+ * computePowder samples it at its nPoints for the result; the plot samples
+ * it again finely enough to catch every apex, since a peak narrower than the
+ * sample spacing has its top fall between two samples and is drawn low.
+ */
+export function powderProfile(twoTheta, intensity, ttMax, fwhm, nPoints) {
+  const x = new Float64Array(nPoints);
+  const y = new Float64Array(nPoints);
+  const sigma = fwhm / (2 * Math.sqrt(2 * Math.LN2));
+  for (let i = 0; i < nPoints; i++) x[i] = (ttMax * i) / (nPoints - 1);
+  // A Gaussian is dead beyond four sigma, so each peak only touches the points
+  // near it; painting the whole trace per peak is what makes this slow.
+  const step = ttMax / (nPoints - 1);
+  for (let i = 0; i < twoTheta.length; i++) {
+    const I = intensity[i];
+    if (I < 1e-6) continue;
+    const lo = Math.max(0, Math.floor((twoTheta[i] - 4 * sigma) / step));
+    const hi = Math.min(
+      nPoints - 1,
+      Math.ceil((twoTheta[i] + 4 * sigma) / step),
+    );
+    for (let j = lo; j <= hi; j++)
+      y[j] += I * Math.exp(-0.5 * ((x[j] - twoTheta[i]) / sigma) ** 2);
+  }
+  return { x, y };
 }

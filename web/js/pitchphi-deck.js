@@ -109,7 +109,7 @@ export class PitchPhiDeck {
       row.className = "motor";
       row.innerHTML =
         `<span class="name" style="color:${colour}">${label}</span>` +
-        `<input type="range" min="${lo}" max="${hi}" step="0.01" value="${st.pp.angles[key]}">` +
+        `<input type="range" min="${lo}" max="${hi}" step="0.01" value="${st.pp.angles[key]}" style="accent-color:${colour}">` +
         `<input type="number" min="${lo}" max="${hi}" step="0.1" value="${st.pp.angles[key]}">`;
       const [range, box] = [row.children[1], row.children[2]];
       const set = (v, keepBox) => {

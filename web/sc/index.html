@@ -53,69 +53,6 @@
           <div class="hint" id="cifNote"></div>
         </section>
 
-        <section class="grp" id="grpCompare">
-          <h2>Compare two crystals</h2>
-          <div class="row">
-            <label>Second</label
-            ><select id="structure2"></select>
-          </div>
-          <button class="wide" id="upload2Btn">Upload a second CIF…</button>
-          <input type="file" id="cifFile2" accept=".cif,.txt" hidden />
-          <div class="row" id="rowTwist">
-            <label>Twist</label
-            ><input
-              type="range"
-              id="twist"
-              min="-180"
-              max="180"
-              step="0.5"
-              value="0"
-            />
-            <span class="u" id="twistLabel">0.0°</span>
-          </div>
-          <div class="quickzone">
-            <button data-twist="0">0°</button>
-            <button data-twist="30">30°</button>
-            <button data-twist="45">45°</button>
-            <button data-twist="60">60°</button>
-            <button data-twist="90">90°</button>
-          </div>
-          <div class="row" id="rowMatchTol">
-            <label>Match within</label
-            ><input
-              type="number"
-              id="matchTol"
-              step="0.005"
-              min="0.001"
-              value="0.03"
-            />
-            <span class="u">Å⁻¹</span>
-          </div>
-          <div class="checks">
-            <label
-              ><input type="checkbox" id="chkMatch" checked /> ring
-              coincidences</label
-            >
-          </div>
-          <div class="row" id="rowCompareMode">
-            <label>Show</label
-            ><select id="compareMode">
-              <option value="overlay">both crystals</option>
-              <option value="coincidences">coincidences only</option>
-              <option value="differences">differences only</option>
-            </select>
-          </div>
-          <button class="wide" id="findTwist">Find the best twist</button>
-          <div class="readout" id="matchInfo"></div>
-          <div class="hint">
-            Both crystals are cut on the same zone axis, layer and d min. The
-            twist rotates the second pattern about the zone axis, which is that
-            crystal's orientation relative to the first, so it is the one
-            rotation that compares two patterns without inventing a picture no
-            crystal can give.
-          </div>
-        </section>
-
         <section class="grp">
           <h2>Simulate</h2>
           <div class="row">
@@ -218,6 +155,17 @@
             />
             <span class="u">°</span>
           </div>
+          <div class="row" id="rowFwhm">
+            <label>Peak width</label
+            ><input
+              type="number"
+              id="fwhm"
+              step="0.01"
+              min="0.005"
+              value="0.15"
+            />
+            <span class="u">° 2θ FWHM</span>
+          </div>
           <div class="row" id="rowMerge">
             <label>Merge peaks</label
             ><input
@@ -262,6 +210,74 @@
           <div class="row" id="rowColours">
             <label>Colours</label
             ><select id="colormap"></select>
+          </div>
+        </section>
+
+        <section class="grp" data-collapsed id="grpCompare">
+          <h2>Compare two crystals</h2>
+          <div class="row">
+            <label>Second</label
+            ><select id="structure2"></select>
+          </div>
+          <button class="wide" id="upload2Btn">Upload a second CIF…</button>
+          <input type="file" id="cifFile2" accept=".cif,.txt" hidden />
+          <p class="hint" id="compareNone">
+            Pick or upload a second crystal to overlay its pattern on this one.
+          </p>
+          <div id="compareBody">
+          <div class="row" id="rowTwist">
+            <label>Twist</label
+            ><input
+              type="range"
+              id="twist"
+              min="-180"
+              max="180"
+              step="0.5"
+              value="0"
+            />
+            <span class="u" id="twistLabel">0.0°</span>
+          </div>
+          <div class="quickzone">
+            <button data-twist="0">0°</button>
+            <button data-twist="30">30°</button>
+            <button data-twist="45">45°</button>
+            <button data-twist="60">60°</button>
+            <button data-twist="90">90°</button>
+          </div>
+          <div class="row" id="rowMatchTol">
+            <label>Match within</label
+            ><input
+              type="number"
+              id="matchTol"
+              step="0.005"
+              min="0.001"
+              value="0.03"
+            />
+            <span class="u">Å⁻¹</span>
+          </div>
+          <div class="checks">
+            <label
+              ><input type="checkbox" id="chkMatch" checked /> ring
+              coincidences</label
+            >
+          </div>
+          <div class="row" id="rowCompareMode">
+            <label>Show</label
+            ><select id="compareMode">
+              <option value="overlay">both crystals</option>
+              <option value="coincidences">coincidences only</option>
+              <option value="differences">differences only</option>
+            </select>
+          </div>
+          <button class="wide" id="findTwist">Find the best twist</button>
+          <div class="readout" id="matchInfo"></div>
+          <div class="hint">
+            Both crystals are cut on the same zone axis, layer and d min. The
+            twist rotates the second pattern about the zone axis, which is that
+            crystal's orientation relative to the first, so it is the one
+            rotation that compares two patterns without inventing a picture no
+            crystal can give.
+          </div>
           </div>
         </section>
 

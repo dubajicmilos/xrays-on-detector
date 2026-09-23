@@ -31,24 +31,83 @@
   text-shadow: 0 1px 3px #000;
 }
 
+/* The title card: the structure, a tag for the radiation, and two lines of
+   what is being shown. Filled by setTitle in app.js. */
 #title {
+  display: inline-block;
+  max-width: 100%;
+  padding: 8px 12px;
+  background: rgba(12, 16, 27, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
   font:
-    12px/1.6 Consolas,
+    11.5px/1.6 Consolas,
     ui-monospace,
     monospace;
-  color: #a5b2cd;
-  white-space: pre-wrap;
+  color: #93a0bd;
+}
+#title:empty {
+  display: none;
+}
+#title .hud-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-bottom: 3px;
+  font:
+    600 15px/1.35 "Segoe UI",
+    system-ui,
+    sans-serif;
+  color: #e8edf8;
+}
+#title .hud-name sub {
+  font-size: 0.7em;
+  line-height: 0;
+}
+#title .variant {
+  font-weight: 400;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+#title .chip {
+  align-self: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font:
+    600 10.5px/1 "Segoe UI",
+    system-ui,
+    sans-serif;
+  color: #0b0e18;
+  background: #8fd8ff;
+}
+/* the three stops of the title gradient, one per radiation */
+#title .chip.neutron {
+  background: #b9a7ff;
+}
+#title .chip.electron {
+  background: #ffb0c8;
 }
 
 #hover {
-  margin-top: 6px;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: rgba(12, 16, 27, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   font:
     11.5px/1.5 Consolas,
     ui-monospace,
     monospace;
   color: var(--good);
   white-space: pre;
-  min-height: 3em;
+}
+#hover:empty {
+  display: none;
 }
 
 #status {
@@ -61,6 +120,9 @@
     monospace;
   color: #7f8da9;
   pointer-events: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(12, 16, 27, 0.6);
   max-width: calc(100% - 28px);
   /* one line, clipped, so a narrow pane does not wrap it over the scale bar */
   white-space: nowrap;
@@ -156,5 +218,16 @@
   }
   #stage {
     border-left: 0;
+  }
+  /* The panel toggle appears in the top-right corner at this width, where the
+     zoom control already sits; step the zoom control left so the toggle does
+     not cover "fit", and hang the title card under both at full width
+     rather than squeezing it into what is left beside them. */
+  #patZoom {
+    right: 46px;
+  }
+  #overlay {
+    top: 50px;
+    right: 14px;
   }
 }

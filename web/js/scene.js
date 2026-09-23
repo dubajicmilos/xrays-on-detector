@@ -62,21 +62,35 @@ export function mat4From3(m) {
   return M;
 }
 
-/** A text label that always faces the camera. */
+/**
+ * A text label that always faces the camera, drawn as a pill: a dark fill
+ * with a rim in the label's colour, so it reads over the whiteboard, the
+ * floor and the rings alike instead of relying on a text shadow.
+ */
 export function makeLabel(text, color = "#dfe6f5", size = 44) {
   const pad = 8;
   const c = document.createElement("canvas");
   const ctx = c.getContext("2d");
   ctx.font = `600 ${size}px Segoe UI, system-ui, sans-serif`;
-  c.width = Math.ceil(ctx.measureText(text).width) + pad * 2;
+  c.width = Math.ceil(ctx.measureText(text).width) + pad * 4;
   c.height = size + pad * 2;
   const ctx2 = c.getContext("2d");
   ctx2.font = `600 ${size}px Segoe UI, system-ui, sans-serif`;
+  const r = (c.height - 4) / 2;
+  ctx2.beginPath();
+  // roundRect is recent (Safari 16, Firefox 112); a plain box elsewhere
+  if (ctx2.roundRect) ctx2.roundRect(2, 2, c.width - 4, c.height - 4, r);
+  else ctx2.rect(2, 2, c.width - 4, c.height - 4);
+  ctx2.fillStyle = "rgba(12,16,27,0.82)";
+  ctx2.fill();
+  ctx2.globalAlpha = 0.6;
+  ctx2.strokeStyle = color;
+  ctx2.lineWidth = 3;
+  ctx2.stroke();
+  ctx2.globalAlpha = 1;
   ctx2.fillStyle = color;
   ctx2.textBaseline = "middle";
-  ctx2.shadowColor = "rgba(0,0,0,0.85)";
-  ctx2.shadowBlur = 8;
-  ctx2.fillText(text, pad, c.height / 2);
+  ctx2.fillText(text, pad * 2, c.height / 2 + 1);
 
   const tex = new THREE.CanvasTexture(c);
   tex.minFilter = THREE.LinearFilter;
@@ -238,8 +252,6 @@ export class InstrumentScene {
     floorY: -125,
     floorSpan: 900,
     gizmo: 82,
-    gizmoY: -55,
-    gizmoZ: 178,
     boardLen: 560,
     boardHeight: 370,
     boardThick: 14,
@@ -248,7 +260,12 @@ export class InstrumentScene {
     boardY: 20,
   };
 
-  constructor(canvas) {
+  /**
+   * @param canvas the stage's canvas
+   * @param inset  the element holding the axes inset (a canvas and two
+   *               captions); see _buildInset
+   */
+  constructor(canvas, inset) {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -265,15 +282,19 @@ export class InstrumentScene {
     this.controls = new Orbit(canvas, () => {
       this.dirty = true;
     });
-    // Look from upstream so the detector's face, not its casing, is toward us.
+    // Look from upstream so the detector's face, not its casing, is toward us,
+    // centred a little downstream of the sample so the whole panel and its
+    // label are in the opening shot rather than cut by the edge of the view.
     this.controls.azimuth = 138;
     this.controls.elevation = 19;
     this.controls.distance = 760;
+    this.controls.target.set(0, 30, 0);
     this.dirty = true;
     this.scale = 200;
 
     this._lights();
     this._build();
+    this._buildInset(inset);
     this.resize();
   }
 
@@ -289,7 +310,13 @@ export class InstrumentScene {
   }
 
   _lights() {
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    // Sky light from above and a dim floor bounce, over a weak ambient: a
+    // strong ambient on its own lit every side of a ring alike, so the metal
+    // read flat. The hemisphere's "up" is +x here, the lab vertical.
+    const sky = new THREE.HemisphereLight(0xdfe7ff, 0x141926, 1.5);
+    sky.position.set(1, 0, 0);
+    this.scene.add(sky);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.45));
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.position.set(1.0, -0.6, 0.8);
     this.scene.add(key);
@@ -347,7 +374,9 @@ export class InstrumentScene {
       edge,
       edge,
       edge,
-      new THREE.MeshBasicMaterial({ map: this.boardTexture }),
+      // Tinted down: unlit, the board was the brightest thing in the frame
+      // and pulled the eye off the instrument in front of it.
+      new THREE.MeshBasicMaterial({ map: this.boardTexture, color: 0xa3a9b8 }),
       edge,
     ]);
     this.board.rotation.z = -Math.PI / 2;
@@ -411,11 +440,14 @@ export class InstrumentScene {
       host.add(s);
       this.ringLabels[name] = s;
     }
-    // put each label just off the rim of its own ring
+    // Each label just off the rim of its own ring, at its own point on the
+    // rim: omega, chi and phi all sat at the top of their rings, which at
+    // zero angles is one line above the sample, and printed over each other.
+    const q = 1.16 * Math.SQRT1_2;
     this.ringLabels.mu.position.set(0, 0, D.ringMu * 1.18);
-    this.ringLabels.omega.position.set(D.ringEta * 1.18, 0, 0);
-    this.ringLabels.chi.position.set(D.ringChi * 1.18, 0, 0);
-    this.ringLabels.phi.position.set(D.ringPhi * 1.18, 0, 0);
+    this.ringLabels.omega.position.set(D.ringEta * q, D.ringEta * q, 0);
+    this.ringLabels.chi.position.set(D.ringChi * q, 0, D.ringChi * q);
+    this.ringLabels.phi.position.set(D.ringPhi * q, -D.ringPhi * q, 0);
 
     // -- sample ------------------------------------------------------------
     // The crystal sits in the phi frame but is oriented by U, so turning the
@@ -507,32 +539,142 @@ export class InstrumentScene {
     this.rayBlock = this._lineSegments(COL.block, 0.6);
     this.directBeam = this._line(COL.beam, 0.3);
 
-    // -- gizmos ------------------------------------------------------------
+    // -- a glow where each ray meets the panel -------------------------------
+    // The spots on the panel texture are a pixel or two across, so from the
+    // opening view the detector read as a black slab with lines running into
+    // it. A soft point at each landing, as bright as its ray, shows where the
+    // reflections are; it is lit by the same stretch, so an extinct
+    // reflection has no glow, as it has no ray.
+    const dot = document.createElement("canvas");
+    dot.width = dot.height = 64;
+    const g = dot.getContext("2d");
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.25, "rgba(255,255,255,0.55)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    const glowGeo = new THREE.BufferGeometry();
+    glowGeo.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(3), 3),
+    );
+    glowGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(3), 3));
+    this.spotGlow = new THREE.Points(
+      glowGeo,
+      new THREE.PointsMaterial({
+        size: 22,
+        sizeAttenuation: false,
+        map: new THREE.CanvasTexture(dot),
+        vertexColors: true,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    this.spotGlow.frustumCulled = false;
+    this.spotGlow.visible = false;
+    this.scene.add(this.spotGlow);
+  }
+
+  /**
+   * Put a glow at the far end of every ray that lands on the panel.
+   *
+   * `hit` holds (origin, landing) pairs and `colours` their per-vertex
+   * colours, as rayGeometry returns them; `inGap` flags the rays that land in
+   * a gap between detector modules, which get no glow because the panel
+   * records nothing there. The landings are kept here and placed for the
+   * camera in _placeGlow.
+   */
+  _setGlow(hit, colours, inGap = null) {
+    const n = hit ? hit.length / 6 : 0;
+    this.spotGlow.visible = n > 0;
+    if (!n) return;
+    let geo = this.spotGlow.geometry;
+    if (geo.attributes.position.array.length < 3 * n) {
+      geo.dispose();
+      geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * n), 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(3 * n), 3));
+      this.spotGlow.geometry = geo;
+    }
+    this._glowAt = new Float32Array(3 * n);
+    const col = geo.attributes.color.array;
+    for (let i = 0; i < n; i++)
+      for (let c = 0; c < 3; c++) {
+        this._glowAt[3 * i + c] = hit[6 * i + 3 + c];
+        // additive, so black is no glow at all
+        col[3 * i + c] =
+          inGap && inGap[i] ? 0 : colours ? colours[6 * i + 3 + c] : 1;
+      }
+    geo.attributes.color.needsUpdate = true;
+    geo.setDrawRange(0, n);
+  }
+
+  /**
+   * Stand each glow a little in front of the panel, toward the camera.
+   *
+   * The glow is a flat sprite facing the camera, and with the panel seen at
+   * an angle, a glow in the panel's plane had half its disc behind the face
+   * and was cut to a crescent by the depth test. Moving it along the line of
+   * sight clears the face without moving it on screen at all, which moving it
+   * back along its ray did not: the glow then sat visibly off its spot.
+   */
+  _placeGlow() {
+    if (!this.spotGlow.visible || !this._glowAt) return;
+    const eye = this.camera.position;
+    const at = this._glowAt;
+    const pos = this.spotGlow.geometry.attributes.position.array;
+    for (let i = 0; i < at.length; i += 3) {
+      const dx = eye.x - at[i],
+        dy = eye.y - at[i + 1],
+        dz = eye.z - at[i + 2];
+      const d = Math.hypot(dx, dy, dz);
+      const f = d > 0 ? Math.min(15, 0.05 * d) / d : 0;
+      pos[i] = at[i] + dx * f;
+      pos[i + 1] = at[i + 1] + dy * f;
+      pos[i + 2] = at[i + 2] + dz * f;
+    }
+    this.spotGlow.geometry.attributes.position.needsUpdate = true;
+  }
+
+  /**
+   * The lab and crystal axes, in a corner inset that turns with the camera.
+   *
+   * They used to stand on the floor either side of the beam, where they
+   * were the largest objects in the lower half of the frame and read as part
+   * of the instrument. In the inset they still say which way is up and how
+   * the crystal sits, the way the view cube of a CAD program does. The inset
+   * has a small renderer of its own with a transparent background, so its
+   * panel is plain CSS; each triad gets half of it, over its HTML caption.
+   */
+  _buildInset(host) {
+    this.inset = host;
+    this.insetCanvas = host.querySelector("canvas");
+    this.insetRenderer = new THREE.WebGLRenderer({
+      canvas: this.insetCanvas,
+      antialias: true,
+      alpha: true,
+    });
+    this.insetRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.insetRenderer.setClearColor(0x000000, 0);
+    this.insetCamera = new THREE.PerspectiveCamera(30, 1, 1, 5000);
+
     this.gizmoLab = this._triad(
       ["x  up", "y  beam", "z"],
       [COL.labX, COL.labY, COL.labZ],
     );
     this.gizmoCry = this._triad(["a", "b", "c"], [COL.a, COL.b, COL.c]);
-    // Standing on the floor, one either side of the incoming beam. Their
-    // materials ignore the depth buffer so the detector arm can never hide
-    // them, which is what made the earlier in-scene version unusable.
-    this.gizmoLab.group.position.set(D.floorY, D.gizmoY, -D.gizmoZ);
-    this.gizmoCry.group.position.set(D.floorY, D.gizmoY, D.gizmoZ);
-    this.scene.add(this.gizmoLab.group, this.gizmoCry.group);
     this.gizmoLab.setDirections([
       [1, 0, 0],
       [0, 1, 0],
       [0, 0, 1],
     ]);
-    for (const [g, text] of [
-      [this.gizmoLab, "lab"],
-      [this.gizmoCry, "crystal"],
-    ]) {
-      const s = makeLabel(text, "#a5b2cd", 40);
-      s.position.set(-D.gizmo * 0.42, 0, 0);
-      g.group.add(s);
-      g.title = s;
-    }
+    this.insetLab = new THREE.Scene();
+    this.insetLab.add(this.gizmoLab.group);
+    this.insetCry = new THREE.Scene();
+    this.insetCry.add(this.gizmoCry.group);
+    this.showCrystalAxes = true;
   }
 
   _line(colour, opacity) {
@@ -607,6 +749,7 @@ export class InstrumentScene {
       group.add(s);
       labels.push(s);
     });
+    const tips = names.map(() => new THREE.Vector3(1, 0, 0));
     const setDirections = (dirs) => {
       dirs.forEach((d, i) => {
         const v = new THREE.Vector3(d[0], d[1], d[2]);
@@ -614,9 +757,57 @@ export class InstrumentScene {
         v.normalize();
         arrows[i].setDirection(v);
         labels[i].position.copy(v).multiplyScalar(L * 1.16);
+        tips[i].copy(v);
       });
     };
-    return { group, arrows, labels, setDirections };
+    // Middle of the origin and the three tips: the arrows all leave one
+    // corner, so looking at the origin would hang the triad off-centre.
+    const centre = () =>
+      tips
+        .reduce((s, t) => s.add(t), new THREE.Vector3())
+        .multiplyScalar(L / 4);
+    return { group, arrows, labels, setDirections, centre };
+  }
+
+  /** Draw the axes inset: the lab triad, then the crystal's beside it. */
+  _renderInset() {
+    const r = this.insetRenderer;
+    const w = this.insetCanvas.clientWidth;
+    const h = this.insetCanvas.clientHeight;
+    if (!w || !h) return;
+    const size = r.getSize(new THREE.Vector2());
+    if (size.x !== w || size.y !== h) r.setSize(w, h, false);
+
+    // Each triad is seen from where the main camera stands, so it turns with
+    // the view; the caption under it keeps the bottom strip.
+    const caption = 16;
+    const panes = [[this.insetLab, this.gizmoLab]];
+    if (this.showCrystalAxes) panes.push([this.insetCry, this.gizmoCry]);
+    const pw = w / panes.length;
+    const ph = h - caption;
+    const cam = this.insetCamera;
+    const look = this.camera.position.clone().sub(this.controls.target);
+    look.normalize();
+    const dist = 360;
+    const perPx = (2 * dist * Math.tan((cam.fov * Math.PI) / 360)) / ph;
+
+    r.setScissorTest(false);
+    r.clear();
+    r.setScissorTest(true);
+    panes.forEach(([scene, triad], i) => {
+      r.setViewport(i * pw, caption, pw, ph);
+      r.setScissor(i * pw, caption, pw, ph);
+      cam.aspect = pw / ph;
+      cam.updateProjectionMatrix();
+      const c = triad.centre();
+      cam.position.copy(c).addScaledVector(look, dist);
+      cam.up.copy(this.camera.up);
+      cam.lookAt(c);
+      for (const s of triad.labels)
+        s.scale.set(13 * perPx * (s.userData.aspect || 2), 13 * perPx, 1);
+      r.render(scene, cam);
+    });
+    r.setScissorTest(false);
   }
 
   // -- per-frame update ---------------------------------------------------
@@ -695,6 +886,11 @@ export class InstrumentScene {
       st.show.rays ? st.rays.hit : null,
       st.rays.hitColour,
     );
+    this._setGlow(
+      st.show.rays ? st.rays.hit : null,
+      st.rays.hitColour,
+      st.rays.inGap,
+    );
     this._setSegments(this.rayMiss, st.show.missed ? st.rays.miss : null);
     this._setSegments(this.rayBlock, st.show.missed ? st.rays.block : null);
 
@@ -746,8 +942,9 @@ export class InstrumentScene {
     for (const k of Object.keys(this.ringLabels))
       this.ringLabels[k].visible = vis.rings && sixc;
     this.floor.visible = vis.floor;
-    this.gizmoCry.group.visible = vis.axes;
-    this.gizmoCry.title.visible = vis.axes;
+    // Without the crystal's axes the inset keeps only the lab half.
+    this.showCrystalAxes = vis.axes;
+    this.inset.classList.toggle("lab-only", !vis.axes);
 
     this.dirty = true;
   }
@@ -760,9 +957,8 @@ export class InstrumentScene {
    * size and not its swung position: the board is bolted to the floor and has
    * no business following delta and gamma around.
    *
-   * The floor at boardMinZ keeps it behind the two axis gizmos, which sit at
-   * z = ±178. A small detector would otherwise put the board in front of the
-   * lab gizmo and hide it.
+   * The floor at boardMinZ keeps it clear of the goniometer: a small detector
+   * would otherwise stand the board against the mu ring.
    */
   _placeBoard(panelWidth) {
     const D = InstrumentScene.DIM;
@@ -905,24 +1101,16 @@ export class InstrumentScene {
     // px = h * (viewH/2) / (distance * tan(fov/2)).
     const vh = Math.max(this.canvas.clientHeight, 1);
     const fovT = Math.tan((this.camera.fov * Math.PI) / 360);
-    const k = (2 * 15 * this.controls.distance * fovT) / vh;
+    const k = (2 * 18 * this.controls.distance * fovT) / vh;
     const sprites = [...Object.values(this.ringLabels), this.detLabel];
     if (this.ppRig) sprites.push(...this.ppRig.labels());
     for (const s of sprites) {
       if (s) s.scale.set(k * (s.userData.aspect || 2), k, 1);
     }
-    // the frame triads carry bigger text than the machine labels
-    const gk = k * 1.25;
-    for (const s of [
-      ...this.gizmoLab.labels,
-      ...this.gizmoCry.labels,
-      this.gizmoLab.title,
-      this.gizmoCry.title,
-    ]) {
-      if (s) s.scale.set(gk * (s.userData.aspect || 2), gk, 1);
-    }
 
+    this._placeGlow();
     this.renderer.render(this.scene, this.camera);
+    this._renderInset();
     this.dirty = false;
   }
 }
