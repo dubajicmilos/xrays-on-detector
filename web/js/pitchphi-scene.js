@@ -85,9 +85,13 @@ export class PitchPhiRig {
       this._labels.push(s);
       return s;
     };
-    label("roll", "#5fc88c", [D.ringEta * 1.16, 0, 0]);
-    label("pitch", "#f0be46", [D.ringChi * 1.16, 0, 0]);
-    label("phi", "#5aa0ff", [D.ringPhi * 1.16, 0, 0]);
+    // each at its own point on its own rim, so the three do not stack above
+    // the sample: roll's ring stands across the beam (x-z), pitch's along it
+    // (x-y), and phi's lies flat (y-z)
+    const q = 1.16 * Math.SQRT1_2;
+    label("roll", "#5fc88c", [D.ringEta * q, 0, D.ringEta * q]);
+    label("pitch", "#f0be46", [D.ringChi * q, D.ringChi * q, 0]);
+    label("phi", "#5aa0ff", [0, -D.ringPhi * q, D.ringPhi * q]);
 
     // The crystal itself, as the same outline block the six-circle draws.
     // The rings are rotationally symmetric, so without this nothing on the

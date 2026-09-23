@@ -11,6 +11,7 @@
 
 import { CifError, parseCif, setElements } from "../../js/cif.js";
 import { mountCredit, logCredit } from "../../js/credit.js";
+import { collapsibleSections } from "../../js/panel.js";
 import {
   electronWavelength,
   RADIATION_LABEL,
@@ -68,6 +69,8 @@ const st = {
   // Powder: 0 keeps the relative d-spacing merge, a positive value merges on a
   // 2theta window (degrees) instead.
   mergeTol: 0,
+  // Powder peak width, FWHM in degrees 2theta; computePowder's own default.
+  fwhm: 0.15,
 };
 
 let luts = null;
@@ -114,6 +117,7 @@ function recompute() {
         radiation: st.radiation,
         twoThetaMax: st.ttMax,
         twoThetaTol: st.mergeTol,
+        fwhm: st.fwhm,
       });
     }
   } catch (err) {
@@ -162,13 +166,34 @@ function recomputeSecond() {
 /** The message on the canvas when there is no result, redrawn on resize. */
 let lastError = null;
 
+/**
+ * The page's overlays over the pattern, as [x, y, w, h] in CSS pixels from
+ * the canvas corner, for the view to fit the pattern around: the title card
+ * and the zoom control where they are, and the status line's whole strip,
+ * since its text changes after the pattern is drawn.
+ */
+function overlayBoxes() {
+  const c = $("pattern").getBoundingClientRect();
+  const boxes = [[0, c.height - 30, c.width, 30]];
+  for (const id of ["title", "patZoom"]) {
+    const r = $(id).getBoundingClientRect();
+    if (r.width && r.height)
+      boxes.push([r.left - c.left, r.top - c.top, r.width, r.height]);
+  }
+  return boxes;
+}
+
 function draw() {
   if (!result) return;
   const lut = luts[st.colormap];
+  // The title first: the pattern is fitted around the card it fills.
+  writeOverlay();
+  const avoid = overlayBoxes();
   if (st.mode === "powder") {
     view.drawPowder(result, {
       labels: st.labels,
       labelThreshold: Math.max(st.labelThr * 100, 1),
+      avoid,
     });
   } else if (second && result2) {
     // Two crystals in one frame. The second is drawn rotated by st.twist about
@@ -187,6 +212,7 @@ function draw() {
       structure,
       nameA: structure.name,
       nameB: second.name,
+      avoid,
     });
   } else {
     view.drawSpots(result, structure, {
@@ -197,22 +223,51 @@ function draw() {
       labels: st.labels,
       labelThreshold: st.labelThr,
       showRings: st.rings && st.mode === "saed",
+      avoid,
     });
   }
-  writeOverlay();
   writeMatchInfo();
 }
 
+/**
+ * Fill the title card: the structure's name, a tag for the radiation, and
+ * the lines under them.
+ *
+ * A bundled or uploaded name is usually a formula with a variant after an
+ * underscore ("MAPbI3_Pnma_pseudocubic", "BA2PbI4_100K"), so a leading
+ * formula gets its digits as subscripts and the variant follows in a lighter
+ * weight; a name that does not start like a formula is shown as it is.
+ * Built node by node, never as HTML: an uploaded file names itself.
+ */
+function setTitle(name, radiation, lines) {
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  };
+  const [head, ...rest] = String(name).split("_");
+  const top = el("div", "hud-name");
+  const formula = el("span", "formula");
+  if (/^[A-Z][A-Za-z0-9]*$/.test(head) && /\d/.test(head)) {
+    for (const part of head.split(/(\d+)/))
+      if (part) formula.append(/^\d/.test(part) ? el("sub", "", part) : part);
+  } else formula.textContent = head;
+  top.append(formula);
+  if (rest.length) top.append(el("span", "variant", rest.join(" ")));
+  top.append(el("span", `chip ${radiation}`, RADIATION_LABEL[radiation]));
+  $("title").replaceChildren(top, ...lines.map((l) => el("div", "hud-meta", l)));
+}
+
 function writeOverlay() {
-  const title = $("title");
   const status = $("status");
   const unit = UNITS[result.radiation || st.radiation];
-  const rad = RADIATION_LABEL[result.radiation || st.radiation];
+  const radiation = result.radiation || st.radiation;
 
   if (st.mode === "powder") {
-    title.textContent =
-      `${structure.name}   ${rad}\n` +
-      `λ ${result.wavelength.toFixed(5)} Å   ${result.count} peaks`;
+    setTitle(structure.name, radiation, [
+      `λ ${result.wavelength.toFixed(5)} Å  ·  ${result.count} peaks`,
+    ]);
     status.textContent =
       `Lorentz ${st.radiation === "xray" ? "and polarisation " : ""}applied` +
       `   ·   intensities relative to the strongest peak` +
@@ -222,10 +277,10 @@ function writeOverlay() {
 
   const zone = result.uvw.join(" ");
   if (st.mode === "section") {
-    title.textContent =
-      `${structure.name}   ${rad}\n` +
-      `zone [${zone}]   layer ${result.layer}   (${zoneLaw(result.uvw, result.layer)})\n` +
-      `${result.count} reflections   d ≥ ${st.dMin.toFixed(2)} Å   |F|² in ${unit}²`;
+    setTitle(structure.name, radiation, [
+      `zone [${zone}]  ·  layer ${result.layer}  ·  (${zoneLaw(result.uvw, result.layer)})`,
+      `${result.count} reflections  ·  d ≥ ${st.dMin.toFixed(2)} Å  ·  |F|² in ${unit}²`,
+    ]);
     const bits = [];
     if (result.zoneFactor > 1)
       bits.push(`zone axis reduced by ${result.zoneFactor} to [${zone}]`);
@@ -238,10 +293,10 @@ function writeOverlay() {
       "hover a spot for its indices   ·   wheel to zoom, drag to pan, " +
         "double-click to fit";
   } else {
-    title.textContent =
-      `${structure.name}   Electrons\n` +
-      `beam ∥ [${zone}]   ${result.kv} kV   λ ${result.wavelength.toFixed(5)} Å\n` +
-      `${result.count} reflections   thickness ${result.thickness} Å`;
+    setTitle(structure.name, "electron", [
+      `beam ∥ [${zone}]  ·  ${result.kv} kV  ·  λ ${result.wavelength.toFixed(5)} Å`,
+      `${result.count} reflections  ·  thickness ${result.thickness} Å`,
+    ]);
     const first = result.zoneRadii[1];
     if (st.zones > 0 && first && first > result.qMax) {
       status.className = "warn";
@@ -630,14 +685,17 @@ function syncRows() {
   show("rowThickness", st.mode === "saed");
   show("rowZones", st.mode === "saed");
   show("rowTtMax", st.mode === "powder");
+  show("rowFwhm", st.mode === "powder");
   show("rowMerge", st.mode === "powder");
   // The comparison belongs to the section view: a powder trace is rotation
   // invariant, and SAED has its own beam-parallel geometry to keep straight.
   const compare = st.mode === "section";
   show("grpCompare", compare);
-  show("rowTwist", compare && !!second);
-  show("rowMatchTol", compare && !!second);
-  show("matchInfo", compare && !!second);
+  // The twist, tolerance and readout mean nothing until there is a second
+  // crystal, so they wait for one; so does its export.
+  show("compareBody", !!second);
+  show("compareNone", !second);
+  show("saveMatches", compare && !!second);
   $("radiation").disabled = st.mode === "saed";
   if (view) showZoom();
   $("modeNote").textContent =
@@ -695,7 +753,9 @@ function bind() {
       st.uvw[i] = v;
       recompute();
     });
-  for (const b of document.querySelectorAll(".quickzone button"))
+  // Only the zone buttons: the twist presets are .quickzone buttons too, and
+  // binding them here threw on every click (they carry no data-zone).
+  for (const b of document.querySelectorAll(".quickzone button[data-zone]"))
     b.addEventListener("click", () => {
       st.uvw = b.dataset.zone.split(",").map(Number);
       for (const [i, id] of ["zu", "zv", "zw"].entries())
@@ -709,6 +769,7 @@ function bind() {
   num("kv", "kv");
   num("thickness", "thickness");
   num("ttmax", "ttMax");
+  num("fwhm", "fwhm");
   num("mergeTol", "mergeTol");
 
   // The match tolerance only re-pairs the two patterns, so it redraws without
@@ -947,6 +1008,7 @@ async function boot() {
   view = new PatternView($("pattern"));
   bind();
   syncRows();
+  collapsibleSections($("panel"));
   mountCredit($("panel"), WORK);
   logCredit(WORK);
   applyStructure(structures[0]);

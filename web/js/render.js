@@ -93,9 +93,17 @@ function addGaussian(image, nFast, nSlow, cx, cy, sPx, total, nSigma = 4) {
   }
 }
 
+/** The frame between detector modules, where the panel has no pixels. */
+const GAP_RGB = [29, 35, 50];
+
 /**
  * Paint a float image into a canvas through a colour-map LUT.
  * `lut` is a flat 768-entry RGB array (256 x 3).
+ *
+ * `gaps` ({fast, slow} flags from the app's gapMasks, or null) marks the dead
+ * pixels between modules. They record nothing, so they take no part in the
+ * stretch, and they are drawn in the gap colour, as the frame between the
+ * modules shows on a real image. Row 0 is the top, the largest slow index.
  */
 export function paint(
   canvas,
@@ -103,7 +111,7 @@ export function paint(
   nFast,
   nSlow,
   lut,
-  { log = true, gain = 1 } = {},
+  { log = true, gain = 1, gaps = null } = {},
 ) {
   if (canvas.width !== nFast || canvas.height !== nSlow) {
     canvas.width = nFast;
@@ -112,14 +120,28 @@ export function paint(
   const ctx = canvas.getContext("2d", { willReadFrequently: false });
   const img = ctx.createImageData(nFast, nSlow);
   const px = img.data;
+  const dead = gaps
+    ? (i) =>
+        gaps.fast[i % nFast] === 1 ||
+        gaps.slow[nSlow - 1 - ((i / nFast) | 0)] === 1
+    : () => false;
 
   let vmax = 0;
-  for (let i = 0; i < image.length; i++) if (image[i] > vmax) vmax = image[i];
+  for (let i = 0; i < image.length; i++)
+    if (image[i] > vmax && !dead(i)) vmax = image[i];
 
   const denom = log ? Math.log1p(gain * 500) : 1;
   const kk = vmax > 0 ? (gain * 500) / vmax : 0;
 
   for (let i = 0; i < image.length; i++) {
+    if (dead(i)) {
+      const o = i * 4;
+      px[o] = GAP_RGB[0];
+      px[o + 1] = GAP_RGB[1];
+      px[o + 2] = GAP_RGB[2];
+      px[o + 3] = 255;
+      continue;
+    }
     let v;
     if (vmax <= 0) v = 0;
     else if (log) v = Math.log1p(image[i] * kk) / denom;
@@ -157,8 +179,10 @@ export function rayGeometry(
   // broad grazing spot is fainter per pixel than a compact one of the same
   // total, and its ray should be too.
   const hitColour = new Float32Array(table.length * 6);
+  // normalised as the image is, by spots the panel records: one in a module
+  // gap (flagged by the app) no more sets the scale here than it does there
   let imax = 0;
-  for (const r of table) if (r.peak > imax) imax = r.peak;
+  for (const r of table) if (r.peak > imax && !r.gap) imax = r.peak;
   const denom = log ? Math.log1p(gain * 500) : 1;
 
   table.forEach((r, n) => {

@@ -13,18 +13,29 @@ import { blockedGeometry, paint, rayGeometry, renderFrame } from "./render.js";
 import { CifError, parseCif, setElements } from "./cif.js";
 import { InstrumentScene } from "./scene.js";
 import { CREDIT, logCredit, mountCredit } from "./credit.js";
+import { collapsibleSections } from "./panel.js";
 import * as PP from "./pitchphi.js";
 import { PitchPhiDeck } from "./pitchphi-deck.js";
 import { PitchPhiRig } from "./pitchphi-scene.js";
 
 const HC = 12.398419843320026; // keV.Angstrom
 
+/**
+ * PILATUS3 panels are tiled from modules of 487 x 195 pixels with dead gaps
+ * of 7 pixels between module columns and 17 between rows (DECTRIS PILATUS3
+ * specification, "Gap width: hor. / ver. [pixel] 7 / 17"; the same numbers
+ * are in dxtbx's FormatPilatusHelpers). Every PILATUS3 size below is a whole
+ * number of modules and gaps. The other presets carry no layout and are drawn
+ * as one active area.
+ */
+const PILATUS3_MODULES = { module: [487, 195], gap: [7, 17] };
+
 const DETECTORS = [
-  ["PILATUS3 100K", 487, 195, 0.172],
-  ["PILATUS3 300K", 487, 619, 0.172],
-  ["PILATUS3 1M", 981, 1043, 0.172],
-  ["PILATUS3 2M", 1475, 1679, 0.172],
-  ["PILATUS3 6M", 2463, 2527, 0.172],
+  ["PILATUS3 100K", 487, 195, 0.172, PILATUS3_MODULES],
+  ["PILATUS3 300K", 487, 619, 0.172, PILATUS3_MODULES],
+  ["PILATUS3 1M", 981, 1043, 0.172, PILATUS3_MODULES],
+  ["PILATUS3 2M", 1475, 1679, 0.172, PILATUS3_MODULES],
+  ["PILATUS3 6M", 2463, 2527, 0.172, PILATUS3_MODULES],
   ["EIGER2 X 1M", 1028, 1062, 0.075],
   ["EIGER2 X 4M", 2068, 2162, 0.075],
   ["EIGER2 X 9M", 3108, 3262, 0.075],
@@ -63,6 +74,9 @@ const st = {
   nFast: 1475,
   nSlow: 1679,
   pixelSize: 0.172,
+  // the preset's module layout, or null for a panel with no gaps drawn;
+  // follows the pixel numbers (see syncPreset)
+  modules: null,
   bin: 4,
   sigma: 0.01,
   mode: "transmission",
@@ -318,9 +332,12 @@ function simulate() {
     minSigmaPx: 1.0,
   });
 
+  const gaps = gapMasks(det);
+  markGaps(table, gaps);
   paint(detCanvas, image, det.nFast, det.nSlow, luts[st.cmap], {
     log: st.log,
     gain: st.gain,
+    gaps,
   });
   fitDetectorCanvas(det);
   scene.touchDetectorImage();
@@ -336,6 +353,9 @@ function simulate() {
   rays.block = blockedFlat
     ? blockedGeometry(blockedFlat, nBlocked, missLen * 0.5)
     : new Float32Array(0);
+  // in table order, as the rays are: a ray into a gap keeps its line but
+  // gets no glow on the panel, which records nothing there
+  rays.inGap = Uint8Array.from(table, (t) => (t.gap ? 1 : 0));
 
   scene.setSceneScale(st.distance);
   const A = P.aMatrix(st.B);
@@ -462,9 +482,12 @@ function simulatePp() {
     minSigmaPx: 1.0,
   });
 
+  const gaps = gapMasks(det);
+  markGaps(table, gaps);
   paint(detCanvas, image, det.nFast, det.nSlow, luts[st.cmap], {
     log: st.log,
     gain: st.gain,
+    gaps,
   });
   fitDetectorCanvas(det);
   scene.touchDetectorImage();
@@ -480,6 +503,9 @@ function simulatePp() {
   rays.block = blockedFlat
     ? blockedGeometry(blockedFlat, nBlocked, missLen * 0.5)
     : new Float32Array(0);
+  // in table order, as the rays are: a ray into a gap keeps its line but
+  // gets no glow on the panel, which records nothing there
+  rays.inGap = Uint8Array.from(table, (t) => (t.gap ? 1 : 0));
 
   scene.setSceneScale(st.distance);
   const A = P.aMatrix(st.B);
@@ -520,6 +546,7 @@ function simulatePp() {
 // ---------------------------------------------------------------- readouts
 
 function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
+  const nGap = table.reduce((n, t) => n + (t.gap ? 1 : 0), 0);
   // d_min goes with the count beside it, so both describe the list rather than
   // one describing the list and the other the panel.
   const qmax = st.builtQmax;
@@ -528,8 +555,11 @@ function updateReadouts(det, table, nNear, nOn, nBlocked, alpha) {
     `${st.hkl.length / 3} hkl in range   d_min ${((2 * Math.PI) / qmax).toFixed(3)} Å` +
     (st.listCapped ? " (list capped at its size limit)" : "") +
     `   ${nNear} near the sphere   ${table.length} on the detector` +
+    (nGap ? ` (${nGap} in module gaps)` : "") +
     (nBlocked ? `   ${nBlocked} into the sample` : "");
   $("detInfo").textContent = st.summary;
+  showDetectorEmpty(table.length - nGap, nNear, nBlocked, alpha, nGap);
+  scheduleDetectorList();
 
   const legend = [[`#78e6ff`, `on the detector (${table.length})`]];
   if (st.show.missed) {
@@ -579,6 +609,74 @@ function refreshUB() {
 const cssX = (det, fast, sx) => (fast + 0.5) * sx;
 const cssY = (det, slow, sy) => (det.nSlow - 1 - slow + 0.5) * sy;
 
+/**
+ * The dead gaps between detector modules, at the binning the frame is drawn
+ * at: one flag per binned column (fast) and one per binned slow index,
+ * counted from the bottom as the physics counts it. A binned pixel is dead
+ * when at least half of it lies in a gap, so a 7-pixel gap stays about 7
+ * pixels wide at any binning instead of growing to whole bins. Null for a
+ * panel without a module layout.
+ */
+function gapMasks(det) {
+  const m = st.modules;
+  if (!m) return null;
+  const f = Math.max(1, st.bin);
+  const axis = (n, size, gap, nb) => {
+    const dead = new Uint8Array(n);
+    for (let start = size; start < n; start += size + gap)
+      dead.fill(1, start, Math.min(n, start + gap));
+    const out = new Uint8Array(nb);
+    for (let j = 0; j < nb; j++) {
+      const c0 = Math.floor(j * f);
+      const c1 = Math.min(n, Math.floor((j + 1) * f));
+      let d = 0;
+      for (let c = c0; c < c1; c++) d += dead[c];
+      out[j] = c1 > c0 && 2 * d >= c1 - c0 ? 1 : 0;
+    }
+    return out;
+  };
+  return {
+    fast: axis(st.nFast, m.module[0], m.gap[0], det.nFast),
+    slow: axis(st.nSlow, m.module[1], m.gap[1], det.nSlow),
+  };
+}
+
+/**
+ * Flag the spots whose centre falls in a module gap, and count them. Such a
+ * reflection still reaches the panel plane, so it keeps its ray and its
+ * place in the table, but the panel records nothing of it.
+ */
+function markGaps(table, gaps) {
+  let n = 0;
+  for (const t of table) {
+    t.gap =
+      !!gaps &&
+      (gaps.fast[Math.round(t.fast)] === 1 ||
+        gaps.slow[Math.round(t.slow)] === 1);
+    if (t.gap) n++;
+  }
+  return n;
+}
+
+/**
+ * An hkl index as markup, negative indices overlined, spaced like the
+ * single-crystal app's formatHkl. `tag` is "tspan" inside SVG, "span" in HTML.
+ *
+ * Not formatHkl's combining overline: the browser draws U+0305 beside the
+ * digit rather than over it here, so the bar is a text decoration on the
+ * digit's own element instead.
+ */
+function hklMarkup(hkl, tag = "tspan") {
+  const wide = hkl.some((v) => Math.abs(v) > 9);
+  return hkl
+    .map((v) =>
+      v < 0
+        ? `<${tag} style="text-decoration:overline">${Math.abs(v)}</${tag}>`
+        : String(v),
+    )
+    .join(wide ? " " : "");
+}
+
 function drawDetectorOverlay(det, table) {
   const box = $("detOverlay");
   // The canvas carries no border (its frame is an outline), so this rect is
@@ -602,13 +700,160 @@ function drawDetectorOverlay(det, table) {
       .slice(0, 22)) {
       const x = ox + cssX(det, t.fast, sx),
         y = oy + cssY(det, t.slow, sy);
+      // A label goes to the right of its spot unless it would run off the
+      // pane. Its width is its digits at the monospace advance (6.05 px at
+      // 11 px, taken as 6.6): the overbars are decorations and take no room.
+      const wide = [t.h, t.k, t.l].some((v) => Math.abs(v) > 9);
+      const chars =
+        `${Math.abs(t.h)}${Math.abs(t.k)}${Math.abs(t.l)}`.length +
+        (wide ? 2 : 0);
+      const left = x + 8 + 6.6 * chars > p.width - 4;
+      const below = y - 17 < 0;
+      // A spot in a module gap is where the reflection would be: ringed
+      // dashed and dimmed, since the panel records nothing there.
       svg +=
-        `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="#8cf0d2bb"/>` +
-        `<text x="${x + 7}" y="${y - 5}" fill="#8cf0d2dd" font-size="10"` +
-        ` font-family="Consolas,monospace">${t.h} ${t.k} ${t.l}</text>`;
+        `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="#8cf0d2bb"` +
+        `${t.gap ? ' stroke-dasharray="2 2" opacity="0.6"' : ""}/>` +
+        `<text x="${left ? x - 8 : x + 8}" y="${below ? y + 16 : y - 6}"` +
+        `${t.gap ? ' opacity="0.6"' : ""}` +
+        ` text-anchor="${left ? "end" : "start"}" fill="#8cf0d2"` +
+        ` stroke="#07090f" stroke-width="3" stroke-linejoin="round"` +
+        ` paint-order="stroke" font-size="11"` +
+        ` font-family="Consolas,monospace">${hklMarkup([t.h, t.k, t.l])}</text>`;
     }
   }
+  // the reflection the list under the image is pointing at
+  const pointed = listHover
+    ? table.find((t) => `${t.h} ${t.k} ${t.l}` === listHover)
+    : null;
+  if (pointed)
+    svg +=
+      `<circle cx="${ox + cssX(det, pointed.fast, sx)}"` +
+      ` cy="${oy + cssY(det, pointed.slow, sy)}" r="11" fill="none"` +
+      ` stroke="#ffffff" stroke-width="2"/>`;
   box.innerHTML = svg + "</svg>";
+}
+
+// ------------------------------------------------------ reflection list
+
+/** The reflection the list is pointing at, as "h k l", ringed on the image. */
+let listHover = null;
+let listTimer = null;
+let listDrawn = 0;
+
+/**
+ * Rebuild the list of reflections on the panel, at most every 150 ms.
+ *
+ * A spinning motor changes the list on every frame, and rewriting a table
+ * that often costs more than it shows; a last rebuild is always queued, so
+ * the list ends up matching the frame that stays on screen.
+ */
+function scheduleDetectorList() {
+  const wait = 150 - (performance.now() - listDrawn);
+  if (wait <= 0) {
+    drawDetectorList();
+    return;
+  }
+  if (!listTimer)
+    listTimer = setTimeout(() => {
+      listTimer = null;
+      drawDetectorList();
+    }, wait);
+}
+
+/**
+ * The reflections on the panel, strongest first.
+ *
+ * d comes from the cell and 2θ from Bragg's law at that d, so the two
+ * columns agree with each other exactly; where the spot actually lands is off
+ * that 2θ by the excitation error the peak width allows, and the hover
+ * readout gives that angle. I is the spot's integrated intensity, relative
+ * to the strongest spot listed.
+ */
+function drawDetectorList() {
+  listDrawn = performance.now();
+  const table = st.lastTable || [];
+  $("detList").classList.toggle("hidden", !table.length);
+  if (!table.length) return;
+  const rows = [...table]
+    .sort((a, b) => b.intensity - a.intensity)
+    .slice(0, 60);
+  const top = rows[0].intensity || 1;
+  const nGap = table.reduce((n, t) => n + (t.gap ? 1 : 0), 0);
+  $("detListCount").textContent =
+    (table.length > rows.length
+      ? `strongest ${rows.length} of ${table.length}`
+      : String(table.length)) + (nGap ? `  ·  ${nGap} in gaps` : "");
+  $("detRows").innerHTML = rows
+    .map((t) => {
+      const hkl = [t.h, t.k, t.l];
+      const d = (2 * Math.PI) / P.norm(P.matVec(st.B, hkl));
+      const tt = 2 * P.toDegrees(Math.asin(Math.min(1, st.wavelength / (2 * d))));
+      // a reflection in a module gap is listed, dimmed: the panel misses it
+      const gap = t.gap
+        ? ` class="gap" title="lands in a gap between detector modules"`
+        : "";
+      return (
+        `<tr data-hkl="${hkl.join(" ")}"${gap}><td>${hklMarkup(hkl, "span")}</td>` +
+        `<td>${tt.toFixed(2)}</td><td>${d.toFixed(3)}</td>` +
+        `<td>${((100 * t.intensity) / top).toFixed(1)}</td></tr>`
+      );
+    })
+    .join("");
+}
+
+function bindDetectorList() {
+  const rows = $("detRows");
+  const point = (key) => {
+    if (key === listHover) return;
+    listHover = key;
+    if (st.lastDet) drawDetectorOverlay(st.lastDet, st.lastTable || []);
+  };
+  rows.addEventListener("mouseover", (e) => {
+    const tr = e.target.closest("tr");
+    point(tr ? tr.dataset.hkl : null);
+  });
+  rows.addEventListener("mouseleave", () => point(null));
+}
+
+/**
+ * Say why the panel is empty, instead of leaving a black image to puzzle
+ * over. `nRecorded` counts the spots the panel records, `nGap` those that
+ * land in the gaps between its modules instead. `alpha` is the incidence on
+ * the sample surface: the six-circle's in reflection geometry, or the pitch
+ * on the pitch-phi machine.
+ */
+function showDetectorEmpty(nRecorded, nNear, nBlocked, alpha, nGap) {
+  const box = $("detEmpty");
+  box.classList.toggle("hidden", nRecorded > 0);
+  if (nRecorded > 0) return;
+  const pp = st.instrument === "pp";
+  let why;
+  if (nGap > 0)
+    why =
+      "The reflections that reach the panel all land in the gaps between " +
+      "its modules: nudge the detector or turn the crystal a little.";
+  else if (pp && !(alpha > 0 && alpha <= 90))
+    why = "The beam is below the sample surface: set pitch between 0° and 90°.";
+  else if (!pp && st.mode === "reflection" && !(alpha > 0))
+    why =
+      "The beam is below the sample surface: tilt the sample until the " +
+      "incidence angle α is above zero.";
+  else if (nNear === 0)
+    why =
+      "No reflection is on the Ewald sphere at these angles: turn a motor, " +
+      "change the energy, or use Drive to a reflection.";
+  else if (nBlocked >= nNear)
+    why =
+      "Every reflection near the sphere leaves into the sample: tilt the " +
+      "sample to let them out.";
+  else
+    why = pp
+      ? "Reflections are excited but miss the panel: move the detector " +
+        "(2θ, azimuth) or bring it closer."
+      : "Reflections are excited but miss the panel: swing the detector " +
+        "arm (delta, gamma) or bring it closer.";
+  box.innerHTML = `<div><b>Nothing on the detector</b>${why}</div>`;
 }
 
 // ---------------------------------------------------------------- controls
@@ -648,7 +893,7 @@ function buildMotorRows() {
     row.className = "motor";
     row.innerHTML =
       `<span class="name" style="color:${colour}">${label}</span>` +
-      `<input type="range" min="${lo}" max="${hi}" step="0.01" value="0">` +
+      `<input type="range" min="${lo}" max="${hi}" step="0.01" value="0" style="accent-color:${colour}">` +
       `<input type="number" min="${lo}" max="${hi}" step="0.1" value="0">` +
       `<button class="run" title="rotate ${label} continuously">▶</button>`;
     const [range, num, run] = [
@@ -713,7 +958,7 @@ function buildRotRows() {
     row.className = "motor";
     row.innerHTML =
       `<span class="name" style="color:${colour}">${name}</span>` +
-      `<input type="range" min="${lo}" max="${hi}" step="0.1" value="0">` +
+      `<input type="range" min="${lo}" max="${hi}" step="0.1" value="0" style="accent-color:${colour}">` +
       `<input type="number" min="${lo}" max="${hi}" step="1" value="0">`;
     const [range, num] = [row.children[1], row.children[2]];
     const set = (v, silent, keepBox) => {
@@ -953,6 +1198,7 @@ function bindInputs() {
     st.nFast = f;
     st.nSlow = s;
     st.pixelSize = p;
+    syncPreset();
     $("nFast").value = f;
     $("nSlow").value = s;
     $("pixel").value = p;
@@ -960,15 +1206,18 @@ function bindInputs() {
     requestSim();
   });
   // Editing the boxes by hand leaves the preset name, so the select says
-  // "custom" unless the numbers still match one of them.
+  // "custom" unless the numbers still match one of them. The module gaps go
+  // with the preset: a custom panel has no layout to draw them from.
   const syncPreset = () => {
     const i = DETECTORS.findIndex(
       ([, f, s, p]) => f === st.nFast && s === st.nSlow && p === st.pixelSize,
     );
     dp.value = i < 0 ? "custom" : i;
+    st.modules = i < 0 ? null : DETECTORS[i][4] || null;
   };
   for (const id of ["pixel", "nFast", "nSlow"])
     $(id).addEventListener("input", syncPreset);
+  syncPreset();
 
   const sel = $("structure");
   for (const s of structures) {
@@ -1563,7 +1812,7 @@ async function boot() {
 
   setElements(Object.keys(tables));
   detCanvas = $("detCanvas");
-  scene = new InstrumentScene($("view3d"));
+  scene = new InstrumentScene($("view3d"), $("axesInset"));
   scene.setDetectorImage(detCanvas);
 
   // Open at a/9 for the first bundled structure: see the note on st.wavelength.
@@ -1578,6 +1827,11 @@ async function boot() {
   bindInputs();
   bindDetectorZoom();
   bindDetectorHover();
+  bindDetectorList();
+  collapsibleSections($("panel"));
+  // A touch screen has no right button or shift key to pan with.
+  if (matchMedia("(pointer: coarse)").matches)
+    $("hint3d").textContent = "drag to orbit · pinch to zoom";
   mountCredit($("panel"));
   logCredit();
 
@@ -1589,6 +1843,15 @@ async function boot() {
     scene.resize();
     requestSim();
   }).observe($("stage"));
+  // The image area also changes size when the list under it appears, goes,
+  // or gains rows, which happens after the frame has fitted the image; the
+  // image and its overlay are refitted to it then, or the spot rings and
+  // the beam-centre lines sat off the image until the next frame.
+  new ResizeObserver(() => {
+    if (!st.lastDet) return;
+    fitDetectorCanvas(st.lastDet);
+    drawDetectorOverlay(st.lastDet, st.lastTable || []);
+  }).observe($("detViewport"));
   window.addEventListener("resize", () => requestSim());
 
   // The loading screen comes down only once the first frame has drawn, so a

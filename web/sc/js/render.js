@@ -16,12 +16,54 @@ import {
   stretch,
 } from "./display.js";
 import { pairUp, rotateInPlane } from "./overlay.js";
+import { powderProfile } from "./powder.js";
 
 const DIM = "#8794b0";
 const LINE = "#2a3145";
 const ACCENT = "#6f9ee0";
 const GOOD = "#8fe3c0";
 const BG = "#090b12";
+const LABEL = "#c3cce0";
+
+/**
+ * The smallest stretched value whose colour stands out from the background:
+ * the first entry of the map with a channel at 48 or more.
+ */
+function visibleFrom(lut) {
+  for (let i = 0; i < 256; i++)
+    if (Math.max(lut[3 * i], lut[3 * i + 1], lut[3 * i + 2]) >= 48)
+      return i / 255;
+  return 1;
+}
+
+/** "rgb(r,g,b)" from sampleLut, at the given alpha. */
+const withAlpha = (rgb, a) => rgb.replace("rgb(", "rgba(").replace(")", `,${a})`);
+
+/**
+ * The shortest step between neighbouring reflections in the plane, in the
+ * units of result.x and result.y: the shorter of the two basis vectors and
+ * their sum and difference, projected the way _drawKey projects them.
+ * Infinity when the result carries no basis.
+ */
+function latticeStep(result, structure) {
+  if (!structure || !result.g1 || !result.g2) return Infinity;
+  const B = structure.B;
+  const onPlane = (g) => {
+    const v = [0, 1, 2].map(
+      (r) => B[r][0] * g[0] + B[r][1] * g[1] + B[r][2] * g[2],
+    );
+    const along = (axis) => v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2];
+    return [along(result.xAxis), along(result.yAxis)];
+  };
+  const a = onPlane(result.g1);
+  const b = onPlane(result.g2);
+  return Math.min(
+    Math.hypot(a[0], a[1]),
+    Math.hypot(b[0], b[1]),
+    Math.hypot(a[0] + b[0], a[1] + b[1]),
+    Math.hypot(a[0] - b[0], a[1] - b[1]),
+  );
+}
 
 export class PatternView {
   constructor(canvas) {
@@ -154,10 +196,17 @@ export class PatternView {
     }
 
     const value = stretch(result.intensity, { gain, log });
-    let lim = 0;
+    // Frame the spots that can be seen. A dark-ended colour map draws the
+    // weakest ones near-black, and fitting to every spot above 1e-3 left a
+    // large cell's visible pattern as a small cluster mid-pane.
+    const seen = visibleFrom(lut);
+    let lim = 0,
+      limSeen = 0;
     for (let i = 0; i < result.count; i++) {
       if (value[i] <= 1e-3) continue;
-      lim = Math.max(lim, Math.abs(result.x[i]), Math.abs(result.y[i]));
+      const r = Math.max(Math.abs(result.x[i]), Math.abs(result.y[i]));
+      lim = Math.max(lim, r);
+      if (value[i] >= seen) limSeen = Math.max(limSeen, r);
     }
     if (lim <= 0) {
       this.message(
@@ -166,11 +215,24 @@ export class PatternView {
       );
       return;
     }
-    lim *= 1.1;
+    if (limSeen > 0) lim = limSeen;
 
+    const dpr = this.dpr;
     this.cx = w / 2;
     this.cy = h / 2;
-    this.scale = Math.min(w, h) / (2 * lim);
+    this.scale = this._fitScale(
+      [{ ...result, value }],
+      lim,
+      spotScale,
+      seen,
+      opts.avoid || [],
+    );
+    // Spots no wider than about half the lattice step on screen, so a dense
+    // lattice stays a lattice instead of merging into one bright disc.
+    const cap = Math.max(
+      1.1 * dpr,
+      0.42 * latticeStep(result, structure) * this.scale * this.zoom,
+    );
     const spots = [];
 
     if (showRings && result.zoneRadii) {
@@ -186,51 +248,190 @@ export class PatternView {
     }
 
     // Additive blending so overlapping spots build up rather than punch holes,
-    // which is how the Game of Diffraction paints its detector too.
+    // which is how the Game of Diffraction paints its detector too. Each spot
+    // is its colour-map colour with a soft edge and a core that whitens with
+    // intensity, the way a spot looks on an exposure.
     ctx.globalCompositeOperation = "lighter";
     for (let i = 0; i < result.count; i++) {
       const v = value[i];
       if (v <= 1e-3) continue;
       const [px, py] = this.toScreen(result.x[i], result.y[i]);
-      const r = spotRadius(v, spotScale) * this.dpr;
-      if (px < -r || py < -r || px > w + r || py > h + r) continue;
-      ctx.fillStyle = sampleLut(lut, v);
+      const r = Math.min(spotRadius(v, spotScale) * dpr, cap);
+      const R = 1.6 * r;
+      if (px < -R || py < -R || px > w + R || py > h + R) continue;
+      const colour = sampleLut(lut, v);
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, R);
+      glow.addColorStop(0, `rgba(255,255,255,${(0.1 + 0.8 * v * v).toFixed(3)})`);
+      glow.addColorStop(0.25, colour);
+      glow.addColorStop(0.6, withAlpha(colour, 0.55));
+      glow.addColorStop(1, withAlpha(colour, 0));
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(px, py, r, 0, 2 * Math.PI);
+      ctx.arc(px, py, R, 0, 2 * Math.PI);
       ctx.fill();
       spots.push({ x: px, y: py, r, i });
     }
     ctx.globalCompositeOperation = "source-over";
 
-    // The direct beam: not a reflection, but it locates the origin.
-    const [ox, oy] = this.toScreen(0, 0);
-    ctx.strokeStyle = DIM;
-    ctx.lineWidth = 1 * this.dpr;
-    ctx.beginPath();
-    ctx.arc(ox, oy, 4 * this.dpr, 0, 2 * Math.PI);
-    ctx.stroke();
+    this._drawBeam();
 
     if (labels) {
-      ctx.fillStyle = DIM;
-      ctx.font = `${10 * this.dpr}px Consolas, ui-monospace, monospace`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      let shown = 0;
+      const items = [];
       for (const s of spots) {
-        if (value[s.i] < labelThreshold || shown > 500) continue;
-        const hkl = [
-          result.hkl[3 * s.i],
-          result.hkl[3 * s.i + 1],
-          result.hkl[3 * s.i + 2],
-        ];
-        ctx.fillText(formatHkl(hkl), s.x, s.y - s.r - 2 * this.dpr);
-        shown++;
+        if (value[s.i] < labelThreshold) continue;
+        items.push({
+          text: formatHkl([
+            result.hkl[3 * s.i],
+            result.hkl[3 * s.i + 1],
+            result.hkl[3 * s.i + 2],
+          ]),
+          x: s.x,
+          y: s.y - s.r - 2 * this.dpr,
+          rank: value[s.i],
+        });
       }
+      this._drawLabels(items);
     }
 
     this.spots = spots;
     this._drawKey(result, structure, lim);
     return spots.length;
+  }
+
+  /**
+   * The scale the view opens at: the largest that keeps every visible spot,
+   * with its glow and its label, inside the canvas and off everything laid
+   * over it.
+   *
+   * `sets` are {count, x, y, value} spot lists, `lim` their extent in
+   * reciprocal units, `seen` the value from which a spot counts as visible,
+   * and `avoid` the page's own overlays as [x, y, w, h] in CSS pixels over
+   * the canvas. The canvas's axes key and scale bar are added here. The fit
+   * starts from the whole pane and steps down 5% at a time until nothing
+   * collides: a tenth of the extent as a margin was either too little (the
+   * outer row under the scale bar, the top labels on the edge) or, on a
+   * round pattern, more than the corners needed.
+   */
+  _fitScale(sets, lim, spotScale, seen, avoid) {
+    const dpr = this.dpr;
+    const { width: w, height: h } = this.canvas;
+    const W = w / dpr,
+      H = h / dpr;
+    const glow = 1.6 * spotRadius(1, spotScale) * dpr;
+    const label = 15 * dpr;
+    const edge = 6 * dpr;
+    const boxes = [
+      ...avoid,
+      [10, H - 106, 104, 66], // axes key
+      [W - 34 - W / 3, H - 52, W / 3 + 20, 32], // scale bar, at its longest
+    ].map(([x, y, bw, bh]) => [x * dpr, y * dpr, (x + bw) * dpr, (y + bh) * dpr]);
+
+    let s = Math.max(1, Math.min(w, h) - 2 * (glow + edge)) / (2 * lim);
+    for (let step = 0; step < 16; step++) {
+      let clear = true;
+      for (const set of sets) {
+        for (let i = 0; i < set.count && clear; i++) {
+          if (set.value[i] < seen) continue;
+          const px = w / 2 + set.x[i] * s;
+          const py = h / 2 - set.y[i] * s;
+          const x0 = px - glow,
+            y0 = py - glow - label,
+            x1 = px + glow,
+            y1 = py + glow;
+          if (x0 < edge || y0 < edge || x1 > w - edge || y1 > h - edge)
+            clear = false;
+          else
+            for (const b of boxes)
+              if (x0 < b[2] && x1 > b[0] && y0 < b[3] && y1 > b[1]) {
+                clear = false;
+                break;
+              }
+        }
+      }
+      if (clear) break;
+      s *= 0.95;
+    }
+    return s;
+  }
+
+  /**
+   * The direct beam: not a reflection, but it locates the origin. A faint
+   * halo and a small stop, as the beam and its stop show on a pattern.
+   */
+  _drawBeam() {
+    const ctx = this.ctx;
+    const dpr = this.dpr;
+    const [ox, oy] = this.toScreen(0, 0);
+    const halo = ctx.createRadialGradient(ox, oy, 0, ox, oy, 28 * dpr);
+    halo.addColorStop(0, "rgba(150,185,255,0.25)");
+    halo.addColorStop(1, "rgba(150,185,255,0)");
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(ox, oy, 28 * dpr, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.fillStyle = "#161b28";
+    ctx.strokeStyle = "#5a6684";
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.arc(ox, oy, 5.5 * dpr, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  /**
+   * Draw hkl labels strongest first, skipping any whose box would overlap a
+   * label already placed. A dense pattern then thins its labels out instead
+   * of printing them over each other until none can be read.
+   *
+   * Each item is {text, x, y, rank}: (x, y) is the bottom centre of the text
+   * in device pixels, and a higher rank is placed first. The placed boxes are
+   * bucketed on a coarse grid, so each test looks at a few neighbours rather
+   * than at every label drawn so far.
+   */
+  _drawLabels(items, max = 500) {
+    const ctx = this.ctx;
+    const dpr = this.dpr;
+    const size = 11 * dpr;
+    const gap = 2 * dpr;
+    const cell = 64 * dpr;
+    ctx.font = `${size}px Consolas, ui-monospace, monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 3 * dpr;
+    ctx.strokeStyle = "rgba(9,11,18,0.9)";
+    ctx.fillStyle = LABEL;
+
+    const grid = new Map();
+    const cellsOf = ([x0, y0, x1, y1], visit) => {
+      for (let cx = Math.floor(x0 / cell); cx <= Math.floor(x1 / cell); cx++)
+        for (let cy = Math.floor(y0 / cell); cy <= Math.floor(y1 / cell); cy++)
+          if (visit(`${cx},${cy}`)) return true;
+      return false;
+    };
+    const hits = (b) =>
+      cellsOf(b, (key) =>
+        (grid.get(key) || []).some(
+          (p) => b[0] < p[2] && b[2] > p[0] && b[1] < p[3] && b[3] > p[1],
+        ),
+      );
+
+    let shown = 0;
+    for (const it of [...items].sort((a, b) => b.rank - a.rank)) {
+      if (shown >= max) break;
+      const half = ctx.measureText(it.text).width / 2;
+      const box = [it.x - half - gap, it.y - size - gap, it.x + half + gap, it.y + gap];
+      if (hits(box)) continue;
+      cellsOf(box, (key) => {
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(box);
+        return false;
+      });
+      ctx.strokeText(it.text, it.x, it.y);
+      ctx.fillText(it.text, it.x, it.y);
+      shown++;
+    }
+    return shown;
   }
 
   /** The two in-plane reciprocal directions and a scale bar. */
@@ -376,11 +577,17 @@ export class PatternView {
       this.message("every reflection in view is extinct\nraise the contrast", "#f0a05a");
       return;
     }
-    lim *= 1.1;
 
     this.cx = w / 2;
     this.cy = h / 2;
-    this.scale = Math.min(w, h) / (2 * lim);
+    // Both crystals are flat colours, so every spot drawn is visible; the
+    // legend stacked on the axes key is one more thing to keep clear of.
+    const sets = [{ ...resultA, value: valueA }];
+    if (rotB) sets.push({ count: resultB.count, x: rotB.x, y: rotB.y, value: valueB });
+    this.scale = this._fitScale(sets, lim, spotScale, 1e-3, [
+      ...(opts.avoid || []),
+      [10, h / this.dpr - 174, 300, 60],
+    ]);
 
     const colourB = "#e2a06a";
     const hits = rotB
@@ -440,55 +647,55 @@ export class PatternView {
       }
     }
 
-    // The direct beam
-    const [ox, oy] = this.toScreen(0, 0);
-    ctx.strokeStyle = DIM;
-    ctx.lineWidth = 1 * this.dpr;
-    ctx.beginPath();
-    ctx.arc(ox, oy, 4 * this.dpr, 0, 2 * Math.PI);
-    ctx.stroke();
+    this._drawBeam();
 
     if (labels) {
-      ctx.fillStyle = DIM;
-      ctx.font = `${10 * this.dpr}px Consolas, ui-monospace, monospace`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      let shown = 0;
+      const items = [];
       for (const s of spots) {
-        if (valueA[s.i] < labelThreshold || shown > 400) continue;
-        ctx.fillText(
-          formatHkl([
+        if (valueA[s.i] < labelThreshold) continue;
+        items.push({
+          text: formatHkl([
             resultA.hkl[3 * s.i],
             resultA.hkl[3 * s.i + 1],
             resultA.hkl[3 * s.i + 2],
           ]),
-          s.x,
-          s.y - s.r - 2 * this.dpr,
-        );
-        shown++;
+          x: s.x,
+          y: s.y - s.r - 2 * this.dpr,
+          rank: valueA[s.i],
+        });
       }
+      this._drawLabels(items, 400);
     }
 
     // Legend: which colour is which crystal, and the twist actually applied.
-    const pad = 12 * this.dpr;
+    // Bottom left, stacked on the axes key: the top-left corner belongs to the
+    // page's title overlay, and the two used to print over each other. It stays
+    // on the canvas so an exported PNG still says which crystal is which.
+    const dpr = this.dpr;
+    const rows = [[ACCENT, nameA]];
+    if (rotB) rows.push([colourB, `${nameB}   twist ${twist.toFixed(1)}°`]);
+    if (rotB && showMatch && hits)
+      rows.push([GOOD, `${hits.pairs.length} coincident`]);
+    ctx.font = `${10.5 * dpr}px Consolas, ui-monospace, monospace`;
+    const boxW =
+      Math.max(...rows.map(([, text]) => ctx.measureText(text).width)) +
+      36 * dpr;
+    const boxH = (12 + rows.length * 16) * dpr;
+    const bx = 10 * dpr;
+    const by = h - 114 * dpr - boxH;
     ctx.fillStyle = "rgba(9,11,18,0.78)";
-    ctx.fillRect(pad, pad, 190 * this.dpr, (rotB ? 58 : 40) * this.dpr);
-    ctx.font = `${10.5 * this.dpr}px Consolas, ui-monospace, monospace`;
+    ctx.fillRect(bx, by, boxW, boxH);
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    const line = (row, colour, text) => {
-      const ly = pad + (14 + row * 16) * this.dpr;
+    rows.forEach(([colour, text], row) => {
+      const ly = by + (14 + row * 16) * dpr;
       ctx.fillStyle = colour;
       ctx.beginPath();
-      ctx.arc(pad + 12 * this.dpr, ly, 4 * this.dpr, 0, 2 * Math.PI);
+      ctx.arc(bx + 12 * dpr, ly, 4 * dpr, 0, 2 * Math.PI);
       ctx.fill();
       ctx.fillStyle = DIM;
-      ctx.fillText(text, pad + 24 * this.dpr, ly);
-    };
-    line(0, ACCENT, nameA);
-    if (rotB) line(1, colourB, `${nameB}   twist ${twist.toFixed(1)}°`);
-    if (rotB && showMatch && hits)
-      line(2, GOOD, `${hits.pairs.length} coincident`);
+      ctx.fillText(text, bx + 24 * dpr, ly);
+    });
 
     this.spots = spots;
     this._drawKey(resultA, structure, lim);
@@ -515,24 +722,37 @@ export class PatternView {
     return best;
   }
 
-  /** The powder trace, with axes. */
+  /**
+   * The powder trace, with axes.
+   *
+   * `avoid` holds the page's overlays as [x, y, w, h] in CSS pixels, as for
+   * the spot views; the plot starts under whichever of them sit in its top
+   * half (the title card), so the card no longer covers the axis.
+   */
   drawPowder(p, opts) {
-    const { labels = true, labelThreshold = 5 } = opts;
+    const { labels = true, labelThreshold = 5, avoid = [] } = opts;
     const { w, h } = this.clear();
     const ctx = this.ctx;
     const dpr = this.dpr;
     this.spots = null;
 
+    let top = 22;
+    for (const [, y, , bh] of avoid)
+      if (y < h / dpr / 2) top = Math.max(top, y + bh + 12);
     const padL = 52 * dpr;
     const padR = 18 * dpr;
-    const padT = 22 * dpr;
-    const padB = 42 * dpr;
+    const padT = top * dpr;
+    // tick labels, the axis title, and the status strip under both
+    const padB = 70 * dpr;
     const plotW = w - padL - padR;
     const plotH = h - padT - padB;
     const ttMax = p.x[p.x.length - 1];
+    // The axis runs a little below zero, to hold the reflection ticks under
+    // the trace's baseline.
+    const yMin = -9;
     const yMax = 108;
     const X = (tt) => padL + (tt / ttMax) * plotW;
-    const Y = (v) => padT + plotH * (1 - v / yMax);
+    const Y = (v) => padT + plotH * (1 - (v - yMin) / (yMax - yMin));
 
     ctx.strokeStyle = "#1c2334";
     ctx.lineWidth = 1 * dpr;
@@ -540,11 +760,10 @@ export class PatternView {
     ctx.fillStyle = DIM;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    // A "nice" step (1, 2, 2.5 or 5 times a power of ten), printed with as
-    // many decimals as it needs, so the labels read what the ticks are at.
-    // The 1.5 goes inside, where it only thins the ticks: multiplying the
-    // step itself gave 1.5 and 7.5 degree ticks labelled as 2 and 8.
-    const tick = niceStep(ttMax * 1.5);
+    // A "nice" step (1, 2, 2.5 or 5 times a power of ten) for about one tick
+    // every 72 px, printed with as many decimals as it needs, so the labels
+    // read what the ticks are at (2.5 is printed as 2.5, not rounded to 3).
+    const tick = niceStep((6 * ttMax) / Math.max(3, plotW / (72 * dpr)));
     const mant = tick / Math.pow(10, Math.floor(Math.log10(tick)));
     const decimals =
       Math.max(0, -Math.floor(Math.log10(tick))) +
@@ -569,39 +788,69 @@ export class PatternView {
     ctx.strokeStyle = LINE;
     ctx.strokeRect(padL, padT, plotW, plotH);
 
+    // Sampled at twelve points a peak width, so every apex is on the trace:
+    // at the result's own 2000 points a narrow peak's top fell between two
+    // samples and was drawn up to a tenth low, under its own label.
+    const n = Math.min(
+      40000,
+      Math.max(p.x.length, Math.ceil((12 * ttMax) / p.fwhm) + 1),
+    );
+    const trace = powderProfile(p.twoTheta, p.intensity, ttMax, p.fwhm, n);
     ctx.beginPath();
-    ctx.moveTo(X(p.x[0]), Y(p.y[0]));
-    for (let i = 1; i < p.x.length; i++) ctx.lineTo(X(p.x[i]), Y(p.y[i]));
+    ctx.moveTo(X(trace.x[0]), Y(trace.y[0]));
+    for (let i = 1; i < n; i++) ctx.lineTo(X(trace.x[i]), Y(trace.y[i]));
     ctx.strokeStyle = ACCENT;
     ctx.lineWidth = 1.3 * dpr;
     ctx.stroke();
     ctx.lineTo(X(ttMax), Y(0));
     ctx.lineTo(X(0), Y(0));
     ctx.closePath();
-    ctx.fillStyle = "rgba(111,158,224,0.16)";
+    const fill = ctx.createLinearGradient(0, Y(100), 0, Y(0));
+    fill.addColorStop(0, "rgba(111,158,224,0.32)");
+    fill.addColorStop(1, "rgba(111,158,224,0.04)");
+    ctx.fillStyle = fill;
     ctx.fill();
 
+    // Where every reflection falls, as the row of ticks under a Rietveld plot.
+    ctx.strokeStyle = "rgba(143,227,192,0.75)";
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    for (let i = 0; i < p.count; i++) {
+      const x = X(p.twoTheta[i]);
+      ctx.moveTo(x, Y(-2));
+      ctx.lineTo(x, Y(-7));
+    }
+    ctx.stroke();
+
     if (labels) {
-      ctx.fillStyle = DIM;
-      ctx.font = `${10 * dpr}px Consolas, ui-monospace, monospace`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
+      // on the drawn apex, which a close neighbour can lift above the peak's
+      // own height
+      const dx = ttMax / (n - 1);
+      const apex = (tt) => {
+        const j = Math.round(tt / dx);
+        let v = 0;
+        for (let k = Math.max(0, j - 2); k <= Math.min(n - 1, j + 2); k++)
+          v = Math.max(v, trace.y[k]);
+        return v;
+      };
+      const items = [];
       for (let i = 0; i < p.count; i++) {
         if (p.intensity[i] < labelThreshold) continue;
-        ctx.fillText(
-          formatHkl(p.hkl[i]),
-          X(p.twoTheta[i]),
-          Y(p.intensity[i]) - 3 * dpr,
-        );
+        items.push({
+          text: formatHkl(p.hkl[i]),
+          x: X(p.twoTheta[i]),
+          y: Y(apex(p.twoTheta[i])) - 3 * dpr,
+          rank: p.intensity[i],
+        });
       }
+      this._drawLabels(items);
     }
 
-    // Just under the tick labels, not at the foot of the canvas: the status
-    // line lives down there and the two collided.
+    // Under the tick labels, clear of the status line below it.
     ctx.fillStyle = DIM;
     ctx.font = `${11 * dpr}px "Segoe UI", system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText("2θ  (degrees)", padL + plotW / 2, padT + plotH + 22 * dpr);
+    ctx.fillText("2θ  (degrees)", padL + plotW / 2, padT + plotH + 24 * dpr);
   }
 }

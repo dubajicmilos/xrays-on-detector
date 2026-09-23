@@ -59,11 +59,15 @@ title: The Game of Diffraction
 nav: {nav}
 nav_order: 6
 description: Ever wondered how single-crystal diffraction works, and how we can predict where the Bragg peaks will emerge on the detector?
+# the site's back-to-top button would sit over the app's lower-right corner
+back_to_top: false
 _styles: >
   .game-shell {
     width: 100vw;
     margin-left: calc(50% - 50vw);
-    height: min(86vh, 940px);
+    height: calc(100vh - 150px);
+    height: calc(100dvh - 150px);
+    max-height: 940px;
     min-height: 520px;
     border: 0;
   }
@@ -77,6 +81,15 @@ __BUTTON_CSS__---
 <a class="game-launch" href="{{ '/diffraction/guide/' | relative_url }}">How to use</a>
 </div>
 
+<div class="game-shell">
+  <iframe src="{{ '/assets/diffraction/index.html' | relative_url }}"
+          title="The Game of Diffraction"
+          loading="lazy"
+          allow="fullscreen"></iframe>
+</div>
+
+<p class="game-note">Works best on a desktop browser.</p>
+
 Try the game, made using
 [xrays_on_detector](https://github.com/dubajicmilos/xrays-on-detector), an
 open-source package for six-circle diffraction, with a second machine built
@@ -89,15 +102,6 @@ diffraction pattern each configuration produces for a range of crystals. You
 can also drive the detector arm onto a particular hkl reflection. The
 **Diffractometer** selector in the control panel switches between the
 six-circle machine and the pitch–phi one.
-
-<div class="game-shell">
-  <iframe src="{{ '/assets/diffraction/index.html' | relative_url }}"
-          title="The Game of Diffraction"
-          loading="lazy"
-          allow="fullscreen"></iframe>
-</div>
-
-<p class="game-note">Works best on a desktop browser.</p>
 """
 
 GUIDE = """---
@@ -118,13 +122,16 @@ __BUTTON_CSS__---
 ## The workspace
 
 - **Control panel (left).** Beamline parameters, sample structure and
-  orientation, and the motor positions.
+  orientation, and the motor positions. Click a section's heading to fold or
+  open it; the less-used sections start folded.
 - **Instrument view (centre).** The diffractometer in three dimensions, seen
   from upstream looking downstream along the beam. The cyan rays are the
   diffracted beams that reach the panel, so each one ends on its own Bragg
-  spot.
+  spot. The lab and crystal axes sit in the inset at the lower left and turn
+  with the view.
 - **Detector view (right).** The same detector face, seen from the sample
-  position.
+  position. Under it, the reflections on the detector are listed strongest
+  first; point at a row to ring its spot.
 
 ## Seeing a reflection
 
@@ -232,11 +239,15 @@ permalink: /diffraction/single-crystal/
 title: Single-Crystal Diffraction
 nav: false
 description: Kinematic diffraction from any CIF you upload. Reciprocal-lattice sections down any zone axis, electron diffraction and powder patterns, for X-rays, neutrons and electrons.
+# the site's back-to-top button would sit over the app's lower-right corner
+back_to_top: false
 _styles: >
   .game-shell {
     width: 100vw;
     margin-left: calc(50% - 50vw);
-    height: min(86vh, 940px);
+    height: calc(100vh - 150px);
+    height: calc(100dvh - 150px);
+    max-height: 940px;
     min-height: 520px;
     border: 0;
   }
@@ -250,6 +261,16 @@ __BUTTON_CSS__---
 <a class="game-launch" href="{{ '/diffraction/' | relative_url }}">The Game of Diffraction</a>
 </div>
 
+<div class="game-shell">
+  <iframe src="{{ '/assets/diffraction/sc/index.html' | relative_url }}"
+          title="Single-Crystal Diffraction"
+          loading="lazy"
+          allow="fullscreen"></iframe>
+</div>
+
+<p class="game-note">Works best on a desktop browser. Nothing you upload
+leaves your machine: the CIF is read in the browser.</p>
+
 Upload a CIF and look at its diffraction pattern. Choose any zone axis
 `[uvw]` and any layer, so `[100]` at layer 0 gives the _0kl_ section and layer
 3 the _3kl_ one, and `[110]` or `[123]` give the diagonal cuts. Switch between
@@ -262,16 +283,6 @@ summed, so a CIF giving only an asymmetric unit is handled correctly. The
 numbers agree with
 [pymatgen](https://pymatgen.org/) to better than 0.2 on a 0-100 intensity
 scale across every bundled structure.
-
-<div class="game-shell">
-  <iframe src="{{ '/assets/diffraction/sc/index.html' | relative_url }}"
-          title="Single-Crystal Diffraction"
-          loading="lazy"
-          allow="fullscreen"></iframe>
-</div>
-
-<p class="game-note">Works best on a desktop browser. Nothing you upload
-leaves your machine: the CIF is read in the browser.</p>
 """
 
 PAGE = PAGE.replace("__BUTTON_CSS__", BUTTON_CSS)
