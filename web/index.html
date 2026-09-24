@@ -55,6 +55,68 @@
           </p>
         </section>
 
+        <section class="grp">
+          <h2>Beam and detector</h2>
+          <div class="row">
+            <label>Wavelength</label
+            ><input
+              type="number"
+              id="wl"
+              step="0.01"
+              min="0.05"
+              max="6.2"
+            /><span class="u">Å</span>
+          </div>
+          <div class="row">
+            <label>Energy</label
+            ><input
+              type="number"
+              id="energy"
+              step="0.1"
+              min="2"
+              max="247"
+            /><span class="u">keV</span>
+          </div>
+          <div class="row">
+            <label>Detector</label
+            ><select id="detPreset"></select>
+          </div>
+          <div class="row">
+            <label>Pixel size</label
+            ><input
+              type="number"
+              id="pixel"
+              step="0.001"
+              min="0.005"
+              max="10"
+            /><span class="u">mm</span>
+          </div>
+          <div class="row">
+            <label>Pixels h×v</label
+            ><input
+              type="number"
+              id="nFast"
+              step="1"
+              min="16"
+              max="16384"
+            /><input type="number" id="nSlow" step="1" min="16" max="16384" />
+          </div>
+          <div class="row">
+            <label>Distance</label
+            ><input
+              type="number"
+              id="distance"
+              step="1"
+              min="20"
+              max="100000"
+            /><span class="u">mm</span>
+          </div>
+          <div class="row">
+            <label>Preview bin</label
+            ><input type="number" id="bin" step="1" min="1" max="64" />
+          </div>
+        </section>
+
         <section class="grp six-only">
           <h2>Motors</h2>
           <div id="motorRows"></div>
@@ -282,68 +344,6 @@
           <div class="tblwrap"><table id="ppTable" class="btable"></table></div>
         </section>
 
-        <section class="grp" data-collapsed>
-          <h2>Beam and detector</h2>
-          <div class="row">
-            <label>Wavelength</label
-            ><input
-              type="number"
-              id="wl"
-              step="0.01"
-              min="0.05"
-              max="6.2"
-            /><span class="u">Å</span>
-          </div>
-          <div class="row">
-            <label>Energy</label
-            ><input
-              type="number"
-              id="energy"
-              step="0.1"
-              min="2"
-              max="247"
-            /><span class="u">keV</span>
-          </div>
-          <div class="row">
-            <label>Detector</label
-            ><select id="detPreset"></select>
-          </div>
-          <div class="row">
-            <label>Pixel size</label
-            ><input
-              type="number"
-              id="pixel"
-              step="0.001"
-              min="0.005"
-              max="10"
-            /><span class="u">mm</span>
-          </div>
-          <div class="row">
-            <label>Pixels h×v</label
-            ><input
-              type="number"
-              id="nFast"
-              step="1"
-              min="16"
-              max="16384"
-            /><input type="number" id="nSlow" step="1" min="16" max="16384" />
-          </div>
-          <div class="row">
-            <label>Distance</label
-            ><input
-              type="number"
-              id="distance"
-              step="1"
-              min="20"
-              max="100000"
-            /><span class="u">mm</span>
-          </div>
-          <div class="row">
-            <label>Preview bin</label
-            ><input type="number" id="bin" step="1" min="1" max="64" />
-          </div>
-        </section>
-
         <section class="grp six-only" data-collapsed>
           <h2>Scattering geometry</h2>
           <label class="radio"
@@ -493,11 +493,6 @@
       <main id="stage">
         <canvas id="view3d"></canvas>
         <div id="legend"></div>
-        <div id="axesInset" aria-hidden="true">
-          <canvas></canvas>
-          <span class="cap">lab</span>
-          <span class="cap">crystal</span>
-        </div>
         <div id="hint3d">
           drag orbit · right-drag or shift-drag pan · wheel zoom
         </div>
@@ -515,6 +510,13 @@
           <span id="detZoomLabel">100%</span>
           <button id="detZoomIn" title="zoom in">+</button>
           <button id="detZoomReset" title="fit to pane">fit</button>
+          <button
+            id="detListToggle"
+            aria-pressed="false"
+            title="show the reflections on the detector as a table"
+          >
+            hkl table
+          </button>
         </div>
         <div id="detList" class="hidden">
           <div class="head">
