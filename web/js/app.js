@@ -373,6 +373,7 @@ function simulate() {
     crystalAxes: axes,
     surface: st.mode === "reflection" ? { normal: surfaceNormalLab() } : null,
     show: st.show,
+    gapLines: gapLines(),
   });
 
   updateReadouts(det, table, nNear, refl.count, nBlocked, alpha);
@@ -530,6 +531,7 @@ function simulatePp() {
       orientation: PP.plateOrientation(ZU, st.pp.U),
     },
     show: st.show,
+    gapLines: gapLines(),
   });
   if (ppRig)
     ppRig.update({
@@ -638,6 +640,26 @@ function gapMasks(det) {
   return {
     fast: axis(st.nFast, m.module[0], m.gap[0], det.nFast),
     slow: axis(st.nSlow, m.module[1], m.gap[1], det.nSlow),
+  };
+}
+
+/**
+ * The centre line of every module gap across the panel face, in mm from the
+ * panel centre ({fast: [...], slow: [...]}, slow counted upward), for the 3D
+ * view to draw the module frame. Null for a panel without a module layout.
+ */
+function gapLines() {
+  const m = st.modules;
+  if (!m) return null;
+  const at = (n, size, gap) => {
+    const out = [];
+    for (let start = size; start < n; start += size + gap)
+      out.push((start + (gap - 1) / 2 - (n - 1) / 2) * st.pixelSize);
+    return out;
+  };
+  return {
+    fast: at(st.nFast, m.module[0], m.gap[0]),
+    slow: at(st.nSlow, m.module[1], m.gap[1]),
   };
 }
 

@@ -533,6 +533,17 @@ export class InstrumentScene {
     this.detLabel = makeLabel("detector", "#c8d2ea", 40);
     this.detGroup.add(this.detLabel);
 
+    // The frame between the detector's modules, as lines just in front of
+    // the face. The gaps are in the panel image too, but a few texels wide
+    // they wash out when the face is drawn small; a line stays one pixel.
+    this.detFrame = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0x5b6a8c }),
+    );
+    this.detFrame.visible = false;
+    this.detFrameKey = "";
+    this.detGroup.add(this.detFrame);
+
     // -- ray bundles -------------------------------------------------------
     this.rayHit = this._lineSegments(COL.ray, 0.95, true);
     this.rayMiss = this._lineSegments(COL.miss, 0.5);
@@ -864,6 +875,7 @@ export class InstrumentScene {
     this.detCase.scale.set(w * 1.05, h * 1.05, 22);
     this.detCase.position.set(0, 0, -13);
     this.detLabel.position.set(-w * 0.4, h * 0.58, 0);
+    this._setFrame(st.gapLines, w, h);
 
     this._setLine(this.armLine, [0, 0, 0], centre);
 
@@ -947,6 +959,33 @@ export class InstrumentScene {
     this.inset.classList.toggle("lab-only", !vis.axes);
 
     this.dirty = true;
+  }
+
+  /**
+   * Lines along the module gaps, 0.5 mm in front of the detector face.
+   *
+   * `lines` is {fast, slow}: gap centres in mm from the panel centre, as the
+   * app's gapLines gives them, or null for a panel without modules. Built
+   * again only when the panel changes, not on every frame.
+   */
+  _setFrame(lines, w, h) {
+    const key = lines ? `${lines.fast}|${lines.slow}|${w}|${h}` : "";
+    if (key === this.detFrameKey) return;
+    this.detFrameKey = key;
+    this.detFrame.visible = !!lines;
+    if (!lines) return;
+    const z = 0.5;
+    const pts = [];
+    for (const x of lines.fast)
+      if (Math.abs(x) < w / 2) pts.push(x, -h / 2, z, x, h / 2, z);
+    for (const y of lines.slow)
+      if (Math.abs(y) < h / 2) pts.push(-w / 2, y, z, w / 2, y, z);
+    this.detFrame.geometry.dispose();
+    this.detFrame.geometry = new THREE.BufferGeometry();
+    this.detFrame.geometry.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(pts, 3),
+    );
   }
 
   /**
