@@ -523,48 +523,6 @@ table.btable tr.good td.st {
   border-radius: 6px;
   padding: 2px 8px;
 }
-/* The lab and crystal axes, drawn by scene.js into the canvas; each half
-   has its caption underneath. */
-#axesInset {
-  position: absolute;
-  left: 12px;
-  bottom: 38px;
-  width: 216px;
-  height: 116px;
-  background: rgba(12, 16, 27, 0.72);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  backdrop-filter: blur(4px);
-  pointer-events: none;
-}
-#axesInset canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-#axesInset .cap {
-  position: absolute;
-  bottom: 4px;
-  width: 50%;
-  text-align: center;
-  font-size: 10.5px;
-  color: var(--dim);
-}
-#axesInset .cap:first-of-type {
-  left: 0;
-}
-#axesInset .cap:last-of-type {
-  right: 0;
-}
-#axesInset.lab-only {
-  width: 108px;
-}
-#axesInset.lab-only .cap:first-of-type {
-  width: 100%;
-}
-#axesInset.lab-only .cap:last-of-type {
-  display: none;
-}
 #panelToggle {
   position: absolute;
   top: 10px;
@@ -721,6 +679,14 @@ table.btable tr.good td.st {
   padding: 1px 7px;
   min-width: 24px;
 }
+#detZoom #detListToggle {
+  margin-left: 4px;
+}
+#detZoom #detListToggle[aria-pressed="true"] {
+  background: #2a5db0;
+  border-color: #3b76d4;
+  color: #fff;
+}
 #detZoomLabel {
   font:
     10.5px Consolas,
@@ -797,15 +763,8 @@ table.btable tr.good td.st {
     border-top: 1px solid var(--line);
   }
   /* the pane is a short strip here; the image needs all of it */
-  #detList {
+  #detList,
+  #detListToggle {
     display: none !important;
-  }
-  #axesInset {
-    width: 168px;
-    height: 92px;
-    bottom: 34px;
-  }
-  #axesInset.lab-only {
-    width: 84px;
   }
 }

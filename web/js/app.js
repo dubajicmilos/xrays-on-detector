@@ -102,6 +102,9 @@ const st = {
     axes: true,
     missed: false,
     labels: true,
+    // the reflection table under the detector image: off until asked for,
+    // so the image has the pane to itself
+    list: false,
   },
   polarization: "horizontal",
   nSigma: 4,
@@ -353,9 +356,6 @@ function simulate() {
   rays.block = blockedFlat
     ? blockedGeometry(blockedFlat, nBlocked, missLen * 0.5)
     : new Float32Array(0);
-  // in table order, as the rays are: a ray into a gap keeps its line but
-  // gets no glow on the panel, which records nothing there
-  rays.inGap = Uint8Array.from(table, (t) => (t.gap ? 1 : 0));
 
   scene.setSceneScale(st.distance);
   const A = P.aMatrix(st.B);
@@ -504,9 +504,6 @@ function simulatePp() {
   rays.block = blockedFlat
     ? blockedGeometry(blockedFlat, nBlocked, missLen * 0.5)
     : new Float32Array(0);
-  // in table order, as the rays are: a ray into a gap keeps its line but
-  // gets no glow on the panel, which records nothing there
-  rays.inGap = Uint8Array.from(table, (t) => (t.gap ? 1 : 0));
 
   scene.setSceneScale(st.distance);
   const A = P.aMatrix(st.B);
@@ -795,8 +792,9 @@ function scheduleDetectorList() {
 function drawDetectorList() {
   listDrawn = performance.now();
   const table = st.lastTable || [];
-  $("detList").classList.toggle("hidden", !table.length);
-  if (!table.length) return;
+  const shown = st.show.list && table.length > 0;
+  $("detList").classList.toggle("hidden", !shown);
+  if (!shown) return;
   const rows = [...table]
     .sort((a, b) => b.intensity - a.intensity)
     .slice(0, 60);
@@ -836,6 +834,16 @@ function bindDetectorList() {
     point(tr ? tr.dataset.hkl : null);
   });
   rows.addEventListener("mouseleave", () => point(null));
+
+  // The table is shown on request only: by default the image has the pane
+  // to itself.
+  const toggle = $("detListToggle");
+  toggle.addEventListener("click", () => {
+    st.show.list = !st.show.list;
+    toggle.setAttribute("aria-pressed", String(st.show.list));
+    if (!st.show.list) point(null);
+    drawDetectorList();
+  });
 }
 
 /**
@@ -1834,7 +1842,7 @@ async function boot() {
 
   setElements(Object.keys(tables));
   detCanvas = $("detCanvas");
-  scene = new InstrumentScene($("view3d"), $("axesInset"));
+  scene = new InstrumentScene($("view3d"));
   scene.setDetectorImage(detCanvas);
 
   // Open at a/9 for the first bundled structure: see the note on st.wavelength.

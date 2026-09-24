@@ -127,11 +127,10 @@ __BUTTON_CSS__---
 - **Instrument view (centre).** The diffractometer in three dimensions, seen
   from upstream looking downstream along the beam. The cyan rays are the
   diffracted beams that reach the panel, so each one ends on its own Bragg
-  spot. The lab and crystal axes sit in the inset at the lower left and turn
-  with the view.
+  spot.
 - **Detector view (right).** The same detector face, seen from the sample
-  position. Under it, the reflections on the detector are listed strongest
-  first; point at a row to ring its spot.
+  position. The **hkl table** button above it lists the reflections on the
+  detector, strongest first; point at a row to ring its spot.
 
 ## Seeing a reflection
 
