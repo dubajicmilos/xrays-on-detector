@@ -94,7 +94,7 @@ function addGaussian(image, nFast, nSlow, cx, cy, sPx, total, nSigma = 4) {
 }
 
 /** The frame between detector modules, where the panel has no pixels. */
-const GAP_RGB = [29, 35, 50];
+const GAP_RGB = [58, 69, 96];
 
 /**
  * Paint a float image into a canvas through a colour-map LUT.
