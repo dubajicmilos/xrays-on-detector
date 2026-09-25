@@ -1,16 +1,18 @@
 """Predict the I4/mcm octahedral-tilt superlattice (all 3 twin domains) on a
-real MAPbBr3 frame, with |F| from the 2x2x2 CIF (pytilting), and test whether
-those positions carry real intensity.
+real MAPbBr3 frame, with |F| from the 2x2x2 CIF, and test whether those
+positions carry real intensity.
 
-Uses the xrays_on_detector.realframe API for geometry/indexing/prediction.
+Uses the xrays_on_detector.realframe API for geometry/indexing/prediction, and
+xrays_on_detector.Crystal for |F(hkl)|.
 The 3 pseudo-merohedral twins share the parent UB; the tilt lights up different
 (odd,odd,odd) super-reflections = cyclic index permutations of the CIF |F|.
 """
-import os, sys, io, contextlib
+import os, sys
 import numpy as np
 import h5py
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from xrays_on_detector import Crystal
 from xrays_on_detector.realframe import (
     FlatDetector, detect_peaks, index_frame, predict_recorded, detector_display)
 
@@ -30,17 +32,12 @@ OUT = os.environ.get(
     "XOD_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
 os.makedirs(OUT, exist_ok=True)
 
-# structure factors from the 2x2x2 pseudocubic CIF (super-index basis)
-PT = os.environ.get("PYTILTING_PATH", "")
-if not PT:
-    sys.exit("set PYTILTING_PATH to a pytilting checkout (for |F(hkl)|)")
-sys.path.insert(0, os.path.join(PT, "tests"))
-from structure_factor_calculator import StructureFactorCalculator
-with contextlib.redirect_stdout(io.StringIO()):
-    CALC = StructureFactorCalculator(CIF)
+# structure factors from the 2x2x2 pseudocubic CIF (super-index basis); the
+# CIF is the full P1 supercell, so its atoms are summed exactly as listed
+CRYSTAL = Crystal.from_cif(CIF, expand_symmetry=False)
 _F = {}
 def Fabs(t):
-    if t not in _F: _F[t] = abs(CALC.calculate_structure_factor(*t)[0])
+    if t not in _F: _F[t] = float(np.sqrt(CRYSTAL.structure_factor_mag2([t])[0]))
     return _F[t]
 
 det, ang, img = FlatDetector.from_eiger_cbf(CBF)

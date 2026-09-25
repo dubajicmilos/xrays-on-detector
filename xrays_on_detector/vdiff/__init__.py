@@ -5,8 +5,8 @@ Run it with::
     python -m xrays_on_detector.vdiff [--no-wmi] [--sq VOLUME.h5]
 
 The physics is the package core (You/diffcalc circle matrices, the Ewald
-construction, Gaussian reciprocal-space peaks, pytilting structure factors from
-a CIF). This subpackage adds the instrument state, the transmission/reflection
+construction, Gaussian reciprocal-space peaks, structure factors from a CIF).
+This subpackage adds the instrument state, the transmission/reflection
 distinction, the motor solvers and the Qt front end.
 """
 from .instrument import Instrument, LabDetector, LatticeCrystal, b_matrix

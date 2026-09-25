@@ -6,8 +6,9 @@ them.
 
 Writes three kinds of file under web/:
 
-  data/scattering_factors.json  Cromer-Mann coefficients, taken from pytilting
-                                so the JavaScript cannot drift from it
+  data/scattering_factors.json  Cromer-Mann coefficients, taken from
+                                single_crystal's table so the JavaScript
+                                cannot drift from the Python
   data/<name>.json              a bundled structure: cell plus the P1 atom list
   test/fixture.json             reference values for test/parity.mjs
 
@@ -65,11 +66,9 @@ def export_colormaps(out_dir, names=("inferno", "viridis", "magma", "turbo",
 
 
 def export_scattering_factors(out_dir):
-    from xrays_on_detector.crystal import _import_pytilting
+    from single_crystal.scatter import xray_table
 
-    sfc = _import_pytilting()
-    table = {el: [list(a), list(b), float(c)]
-             for el, (a, b, c) in sfc.SCATTERING_FACTORS.items()}
+    table = xray_table()
     path = os.path.join(out_dir, "scattering_factors.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(table, fh, separators=(",", ":"), sort_keys=True)

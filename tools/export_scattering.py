@@ -3,8 +3,9 @@
     python tools/export_scattering.py
 
 The X-ray table (Cromer-Mann) is already written by export_web_data.py, which
-takes it from pytilting so the JavaScript cannot drift from the Python. This
-script adds the other two radiations and gathers all three in one place:
+takes it from single_crystal's table so the JavaScript cannot drift from the
+Python. This script adds the other two radiations and gathers all three in one
+place:
 
   neutron_lengths.json    coherent bound scattering length b_c, in fm
   electron_factors.json   five-Gaussian electron scattering factors, in Angstrom

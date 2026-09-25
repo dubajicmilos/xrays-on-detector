@@ -3,7 +3,7 @@ detector of a six-circle (You 1999) diffractometer.
 
 Pipeline
 --------
-CIF --(pytilting)--> |F(hkl)|^2 and reciprocal lattice (2*pi convention)
+CIF --(ASE, Cromer-Mann)--> |F(hkl)|^2 and reciprocal lattice (2*pi convention)
     --(diffcalc You matrices)--> reciprocal-lattice points in the lab frame
     --(monochromatic Ewald, Gaussian peaks)--> excited reflections
     --(flat area detector on the nu/delta arm)--> rendered pixel image.
