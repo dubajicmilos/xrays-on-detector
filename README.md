@@ -159,8 +159,11 @@ swings.
   run button that turns that circle continuously, and any number of them can
   run at once; one shared signed speed sets the rate and the direction, and
   angles wrap so a circle keeps going.
-- **Sample**: a lattice preset (runs with no CIF at all) or **Load CIF ...** for
-  real `|F(hkl)|²` through pytilting.
+- **Sample**: a lattice preset (runs with no CIF at all), **Load CIF ...** for
+  real `|F(hkl)|²` through pytilting, or **Load S(q) ...** for a measured
+  reciprocal-space volume (see below), which puts real data on the panel instead
+  of calculated peaks. A **contrast** slider goes with it: measured S(q) spans
+  orders of magnitude between a Bragg peak and the diffuse scattering around it.
 - **Orientation without writing a UB by hand**. Three free-rotation sliders turn
   the crystal about the lab axes, or point a direction where you want it: *put
   (110) along the beam*, then optionally *spin about that axis until (001) is
@@ -267,6 +270,65 @@ for all three twin domains (|F| from a 2×2×2 CIF via pytilting). On a single
 0.2° still the main Bragg peaks are ~80% detectable, and predicted-|F|² vs
 measured superlattice intensity correlate at ~+0.6 to +0.7 (faint superlattice
 shows up far more clearly in the integrated 3D reconstruction than on one still).
+
+## Measured S(q) on the detector (`sqvolume.py`)
+
+The reverse of what `reconstruct.py` (and rspace3d, and CrysAlisPro) do. Those
+turn a series of detector frames into a 3D reciprocal-space volume; this reads
+such a volume back and asks what a detector would record from it. Every pixel is
+mapped to a point in reciprocal space and the volume is interpolated there, so
+Bragg peaks, superlattice peaks and diffuse scattering all appear wherever the
+Ewald sphere cuts the measured data.
+
+```python
+from xrays_on_detector.sqvolume import SqVolume, project_volume
+
+vol = SqVolume.from_h5("MAPbCl3_133K_sym_mmm.h5")   # rspace3d / CrysAlisPro
+image, coverage = project_volume(detector, vol, wavelength=vol.wavelength,
+                                 ZUB=Z @ U @ B)      # sample circles, U, B
+```
+
+In the app it is **Load S(q) ...** (or start on one with
+`python -m xrays_on_detector.vdiff --sq VOLUME.h5`), and then the motors sweep
+the measured data across the panel exactly as they sweep calculated peaks. Needs
+`h5py`. `examples/project_sq_volume.py` does the same headless, from `XOD_SQ_H5`.
+
+A volume over ~200 M voxels is block-averaged by an integer factor as it is
+read, so a 5.9 GB raw reconstruction opens as 839×737×300 in about 20 s; the
+factor is reported, never applied quietly. The file's own wavelength is adopted
+on load, since that is the sphere the data were collected on.
+
+Four things worth knowing:
+
+- **The file's UB is used for the cell, never as an orientation.** A CrysAlisPro
+  UB lives in CrysAlisPro's own frame, which differs from this lab frame by a
+  fixed rotation the file does not record (`RECONSTRUCTION_UNIVERSAL.md` §2). So
+  the volume arrives as a lattice with `U = I` and you orient it as usual.
+- **Coverage is reported, and it is usually not 100%.** A reconstruction covers a
+  box a few r.l.u. wide, and a short wavelength makes the Ewald sphere flat: at
+  72 keV a ±6 r.l.u. volume subtends only ~10° in 2θ, so at 200 mm it lands in a
+  small central disc and the rest of the panel reads zero for want of data, not
+  of scattering. *Move detector back to fit the volume* solves for the distance
+  that spreads the data across the panel (~690 mm in that case).
+- **No polarisation or obliquity factor is applied.** The volume already holds
+  measured intensity; multiplying it by a Thomson factor would add a distortion
+  rather than remove one.
+- **Holes in the source volume come through as holes.** rspace3d writes an
+  unmeasured voxel as 0, not NaN, so a *raw* (unsymmetrised) reconstruction still
+  carries the original detector's module gaps and the beam stop, and they
+  reappear on the simulated panel as zero-valued stripes cutting across it at
+  whatever angle the Ewald sphere now meets them. That is the data, not a bug;
+  a symmetry-averaged volume has them filled in. Volumes written by
+  `reconstruct.save_rspace3d_h5` do use NaN, and those voxels are read as zero
+  with the fraction reported.
+
+Validated (`python tests/test_sqvolume.py`): trilinear sampling is exact on a
+linear field; the pixel → hkl → pixel round trip agrees with `Detector.project`
+to ~5e-14 px over three arm positions, so the projected image lines up with the
+rendered spot overlay; planted peaks land on the six-circle model's predicted
+pixel to <0.6 px, on and off the beam centre. On real I15 MAPbCl₃ data the
+strongest measured Bragg peaks land 0.46 voxel from the prediction, which is the
+half-voxel registration of the reconstruction's own grid, not an error here.
 
 ## Current scope and limits
 

@@ -6,6 +6,9 @@ Built on the package core: :mod:`xrays_on_detector.geometry` supplies the You
 live instrument needs on top of that:
 
 * a lattice-only crystal, so the app runs with no CIF loaded;
+* a measured S(q) volume (:mod:`xrays_on_detector.sqvolume`) as an alternative
+  sample: the panel then cuts the Ewald sphere through real data instead of
+  collecting calculated Bragg peaks;
 * the transmission / reflection distinction (a sample surface that blocks rays);
 * detector pixel binning for interactive frame rates;
 * the inverse problems a beamline user actually solves: which eta brings a given
@@ -202,6 +205,7 @@ class Shot:
     detector: LabDetector            # the (possibly binned) detector used
     alpha_deg: float                 # incidence angle onto the sample surface
     n_near: int                      # reflections near the sphere before blocking
+    coverage: float | None = None    # fraction of pixels inside a loaded S(q)
 
 
 # --------------------------------------------------------------------------
@@ -235,6 +239,13 @@ class Instrument:
     sigma: float = 0.010             # reciprocal-space peak width, 1/A (2*pi)
     mode: str = "transmission"       # or "reflection"
     surface_hkl: tuple = (0, 0, 1)
+
+    # A measured S(q) (sqvolume.SqVolume) standing in for the calculated peaks.
+    # It is indexed in `crystal`'s hkl, so the two belong together: setting a
+    # volume measured on one cell against a different lattice silently
+    # reinterprets the data.
+    volume: object = None
+    volume_oversample: int = 1
 
     # Reflection list cache, with the |Q| it was built out to. The panel's
     # reach depends on where the arm stands, so a list built with the arm at
@@ -350,8 +361,23 @@ class Instrument:
 
         image, table = render(det, refl, self.wavelength, self.sigma,
                               polarization_mode=self.polarization_mode)
+
+        # With a measured volume loaded the image *is* the data: the panel cuts
+        # the Ewald sphere through S(q) instead of collecting calculated peaks.
+        # The reflection table is kept, so the hkl labels and the 3D rays still
+        # say where the lattice puts each reflection on the measured frame.
+        coverage = None
+        if self.volume is not None:
+            from ..sqvolume import project_volume
+            image, coverage = project_volume(
+                det, self.volume, self.wavelength,
+                self.sample_M() @ self.U @ self.crystal.B,
+                oversample=self.volume_oversample,
+            )
+
         return Shot(image=image, table=table, refl=refl, blocked=blocked,
-                    detector=det, alpha_deg=alpha, n_near=n_near)
+                    detector=det, alpha_deg=alpha, n_near=n_near,
+                    coverage=coverage)
 
     # -- inverse problems -------------------------------------------------
 

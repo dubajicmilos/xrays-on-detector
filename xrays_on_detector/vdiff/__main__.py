@@ -1,6 +1,6 @@
-"""python -m xrays_on_detector.vdiff [--no-wmi]"""
+"""python -m xrays_on_detector.vdiff [--no-wmi] [--sq VOLUME.h5]"""
 import sys
 
-from . import run
+from . import run_cli
 
-sys.exit(run(no_wmi="--no-wmi" in sys.argv))
+sys.exit(run_cli())

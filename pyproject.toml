@@ -28,7 +28,9 @@ dependencies = [
 # The PyQt6 virtual diffractometer (python -m xrays_on_detector.vdiff) and the
 # single-crystal CIF viewer (python -m single_crystal). The viewer itself needs
 # only numpy; these are what put it on screen.
-vdiff = ["PyQt6>=6.5", "matplotlib>=3.7", "scipy>=1.10"]
+# h5py is here as well as in `data` because the app's Load S(q) button reads an
+# rspace3d reciprocal-space volume.
+vdiff = ["PyQt6>=6.5", "matplotlib>=3.7", "scipy>=1.10", "h5py>=3.8"]
 singlecrystal = ["PyQt6>=6.5", "matplotlib>=3.7"]
 # Reading real frames and writing reconstructed volumes.
 data = ["fabio>=2023.1", "h5py>=3.8", "scipy>=1.10"]

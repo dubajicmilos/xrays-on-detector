@@ -310,7 +310,7 @@ class DetectorView(QWidget):
 
 
 # --------------------------------------------------------------------------
-# CIF loading worker
+# Sample loading workers
 # --------------------------------------------------------------------------
 
 
@@ -337,6 +337,29 @@ class CifWorker(QThread):
             self.done.emit(None, 0, f"{type(exc).__name__}: {exc}")
 
 
+class VolumeWorker(QThread):
+    """Read an rspace3d S(q) reconstruction without freezing the window.
+
+    These files run to gigabytes and are gzip-compressed, so reading one takes
+    seconds even before any binning.
+    """
+
+    progress = pyqtSignal(int, int)
+    done = pyqtSignal(object, str)
+
+    def __init__(self, path: str):
+        super().__init__()
+        self.path = path
+
+    def run(self):
+        try:
+            from ..sqvolume import SqVolume
+            vol = SqVolume.from_h5(self.path, progress=self.progress.emit)
+            self.done.emit(vol, "")
+        except Exception as exc:
+            self.done.emit(None, f"{type(exc).__name__}: {exc}")
+
+
 # --------------------------------------------------------------------------
 # Main window
 # --------------------------------------------------------------------------
@@ -353,6 +376,9 @@ class MainWindow(QMainWindow):
         self._sim_pending = False
         self._anim = None
         self._U_base = np.eye(3)     # orientation the free-rotation sliders start from
+        # What last happened to the sample, kept out of the status bar because
+        # the next redraw overwrites that within 25 ms.
+        self._sample_note = ""
 
         self.view3d = View3D(self)
         self.detview = DetectorView(self)
@@ -501,14 +527,46 @@ class MainWindow(QMainWindow):
         self.cb_cell.currentIndexChanged.connect(self._apply_cell_preset)
         f.addRow("Lattice", self.cb_cell)
 
+        loaders = QWidget()
+        ll = QHBoxLayout(loaders)
+        ll.setContentsMargins(0, 0, 0, 0)
         self.btn_cif = QPushButton("Load CIF ...")
+        self.btn_cif.setToolTip("calculate |F(hkl)| from a structure")
         self.btn_cif.clicked.connect(self._load_cif)
-        f.addRow(self.btn_cif)
+        ll.addWidget(self.btn_cif)
+        self.btn_vol = QPushButton("Load S(q) ...")
+        self.btn_vol.setToolTip(
+            "an rspace3d / CrysAlisPro reciprocal-space reconstruction (.h5).\n"
+            "The panel then cuts the Ewald sphere through the measured data\n"
+            "instead of collecting calculated peaks: the reverse of the\n"
+            "reconstruction that built the volume.")
+        self.btn_vol.clicked.connect(self._load_volume)
+        ll.addWidget(self.btn_vol)
+        f.addRow(loaders)
 
         self.lb_cell = QLabel("-")
         self.lb_cell.setObjectName("val")
         self.lb_cell.setWordWrap(True)
         f.addRow("Cell", self.lb_cell)
+
+        self.w_volume = QWidget()
+        vf = QVBoxLayout(self.w_volume)
+        vf.setContentsMargins(0, 0, 0, 0)
+        vf.setSpacing(3)
+        self.lb_volume = QLabel("-")
+        self.lb_volume.setObjectName("val")
+        self.lb_volume.setWordWrap(True)
+        vf.addWidget(self.lb_volume)
+        self.btn_vol_fit = QPushButton("Move detector back to fit the volume")
+        self.btn_vol_fit.setToolTip(
+            "set the distance so the measured data span the panel")
+        self.btn_vol_fit.clicked.connect(self._fit_distance_to_volume)
+        vf.addWidget(self.btn_vol_fit)
+        self.btn_vol_off = QPushButton("Unload S(q), back to calculated peaks")
+        self.btn_vol_off.clicked.connect(self._unload_volume)
+        vf.addWidget(self.btn_vol_off)
+        self.w_volume.setVisible(False)
+        f.addRow(self.w_volume)
 
         self.sp_sigma = QDoubleSpinBox()
         self.sp_sigma.setRange(0.0005, 0.5)
@@ -673,9 +731,22 @@ class MainWindow(QMainWindow):
         self.cb_cmap.addItems(["inferno", "viridis", "magma", "turbo", "gray"])
         self.cb_cmap.currentTextChanged.connect(self._on_display)
         gl.addWidget(self.cb_cmap, 4, 0, 1, 2)
+
+        # Measured S(q) spans orders of magnitude between a Bragg peak and the
+        # diffuse scattering around it, so the colour map needs a gain the
+        # calculated-peak case never did.
+        gl.addWidget(QLabel("Contrast"), 5, 0)
+        self.sl_gain = QSlider(Qt.Orientation.Horizontal)
+        self.sl_gain.setRange(-20, 50)          # gain = 10 ** (value / 10)
+        self.sl_gain.setValue(0)
+        self.sl_gain.setToolTip("brightness gain before the colour map "
+                                "(logarithmic, 1 at the centre-left)")
+        self.sl_gain.valueChanged.connect(self._on_display)
+        gl.addWidget(self.sl_gain, 5, 1)
+
         btn_full = QPushButton("Render at full resolution")
         btn_full.clicked.connect(self._render_full)
-        gl.addWidget(btn_full, 5, 0, 1, 2)
+        gl.addWidget(btn_full, 6, 0, 1, 2)
         v.addWidget(g)
 
         v.addStretch(1)
@@ -944,6 +1015,9 @@ class MainWindow(QMainWindow):
         c = self.cb_cell.itemData(i)
         if c is None:
             return
+        self._sample_note = (
+            "S(q) volume unloaded: its hkl grid belongs to the cell it was "
+            "measured with, not to this preset" if self._drop_volume() else "")
         self.inst.crystal = LatticeCrystal.from_cell(c.a, c.b, c.c, c.alpha,
                                                      c.beta, c.gamma, name=c.name)
         self.request_sim(rebuild=True)
@@ -979,6 +1053,7 @@ class MainWindow(QMainWindow):
             return
         self.det_qimage = image_to_qimage(
             self.shot.image, log=self.ck_log.isChecked(),
+            gain=10.0 ** (self.sl_gain.value() / 10.0),
             cmap=self.cb_cmap.currentText())
 
     def _refresh_readouts(self):
@@ -995,12 +1070,25 @@ class MainWindow(QMainWindow):
         self._refresh_ub()
         d_min = 2 * np.pi / inst.q_max() if inst.q_max() > 0 else float("inf")
         n_blocked = 0 if shot.blocked is None else len(shot.blocked.hkl)
-        self.lb_info.setText(
-            f"{len(inst.hkl)} hkl in range   d_min {d_min:.3f} A   "
-            f"|Q|max {inst.q_max():.3f} 1/A\n"
-            f"{shot.n_near} near the Ewald sphere   "
-            f"{len(shot.table)} on the detector"
-            + (f"   {n_blocked} blocked by surface" if n_blocked else ""))
+        info = (f"{len(inst.hkl)} hkl in range   d_min {d_min:.3f} A   "
+                f"|Q|max {inst.q_max():.3f} 1/A\n"
+                f"{shot.n_near} near the Ewald sphere   "
+                f"{len(shot.table)} on the detector"
+                + (f"   {n_blocked} blocked by surface" if n_blocked else ""))
+        if shot.coverage is not None:
+            # The image is the measured S(q); the hkl above only label it.
+            info += (f"\nS(q): {shot.coverage:.0%} of the panel is inside the "
+                     "measured volume")
+            if shot.coverage < 0.995:
+                from ..sqvolume import fill_distance
+                d = fill_distance(inst.volume, inst.detector_obj(1),
+                                  inst.wavelength)
+                if np.isfinite(d):
+                    info += f", which it would fill at ~{d:.0f} mm"
+            info += "\nthe rest reads zero for want of data, not of scattering"
+        if self._sample_note:
+            info += "\n" + self._sample_note
+        self.lb_info.setText(info)
         self.status.showMessage(
             f"mu {inst.mu:.2f}  omega {inst.eta:.2f}  chi {inst.chi:.2f}  "
             f"phi {inst.phi:.2f}   |   delta {inst.delta:.2f}  gamma {inst.gamma:.2f}"
@@ -1180,6 +1268,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "CIF load failed", err)
             return
         crystal, hkl, Fmag2, built_qmax = res
+        self._sample_note = (
+            "S(q) volume unloaded: its hkl grid belongs to the cell it was "
+            "measured with, not to this CIF" if self._drop_volume() else "")
         self.inst.crystal = crystal
         self.inst.hkl = hkl
         self.inst.Fmag2 = Fmag2
@@ -1190,6 +1281,104 @@ class MainWindow(QMainWindow):
         self.status.showMessage(
             f"loaded CIF: {crystal.n_atoms} atoms, {n} reflections in range")
         self.request_sim()
+
+    # -- measured S(q) volume ----------------------------------------------
+
+    def _load_volume(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load an rspace3d S(q) volume", os.getcwd(),
+            "reciprocal-space volumes (*.h5 *.hdf5);;All files (*)")
+        if path:
+            self.load_volume(path)
+
+    def load_volume(self, path: str):
+        """Read an S(q) volume in the background and put it on the panel.
+
+        Also the entry point for ``--sq PATH`` on the command line, so a session
+        can start straight on a measured volume.
+        """
+        dlg = QProgressDialog("Reading the reciprocal-space volume ...",
+                              None, 0, 100, self)
+        dlg.setWindowTitle("Loading S(q)")
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(0)
+        dlg.setValue(0)
+
+        self._worker = VolumeWorker(path)
+        self._worker.progress.connect(
+            lambda done, total: dlg.setValue(int(100 * done / max(total, 1))))
+        self._worker.done.connect(lambda vol, err: self._volume_done(vol, err, dlg))
+        self._worker.start()
+
+    def _volume_done(self, vol, err, dlg):
+        dlg.close()
+        if err:
+            QMessageBox.critical(self, "S(q) volume load failed", err)
+            return
+
+        self.inst.volume = vol
+        # The volume indexes reciprocal space in its own hkl, so the lattice has
+        # to be the one it was measured with. Its UB is deliberately not used as
+        # an orientation: a CrysAlisPro UB lives in CrysAlisPro's frame.
+        self.inst.crystal = LatticeCrystal.from_cell(**vol.cell, name=vol.name)
+        self.cb_cell.blockSignals(True)
+        self.cb_cell.setCurrentIndex(-1)
+        self.cb_cell.blockSignals(False)
+        self.lb_volume.setText(vol.describe())
+        self.w_volume.setVisible(True)
+
+        notes = []
+        if vol.bin_factor > 1:
+            notes.append(f"block-averaged {vol.bin_factor}x to fit in memory")
+        if vol.nan_frac:
+            notes.append(f"{vol.nan_frac:.1%} unmeasured voxels read as zero")
+
+        wl = float(vol.wavelength)
+        if self.sp_wl.minimum() <= wl <= self.sp_wl.maximum():
+            self.sp_wl.setValue(wl)          # the sphere the data were taken on
+        else:
+            notes.append(f"its wavelength {wl:.4f} A is outside the app's range, "
+                         f"so {self.inst.wavelength:.4f} A is kept")
+        self._sample_note = ("S(q): " + "; ".join(notes)) if notes else ""
+        self.status.showMessage("loaded S(q): " + vol.name)
+        self.request_sim(rebuild=True)
+
+    def _unload_volume(self):
+        if self._drop_volume():
+            self._sample_note = ""
+            self.status.showMessage(
+                "S(q) unloaded; back to calculated peaks on the same lattice")
+            self.request_sim()
+
+    def _drop_volume(self) -> bool:
+        """Forget a loaded S(q). Returns whether there was one.
+
+        Its voxel grid is indexed in the hkl of the cell it was measured with,
+        so it stops meaning anything the moment the lattice changes.
+        """
+        if self.inst.volume is None:
+            return False
+        self.inst.volume = None
+        self.w_volume.setVisible(False)
+        return True
+
+    def _fit_distance_to_volume(self):
+        from ..sqvolume import fill_distance
+
+        vol = self.inst.volume
+        if vol is None:
+            return
+        d = fill_distance(vol, self.inst.detector_obj(1), self.inst.wavelength)
+        if not np.isfinite(d):
+            self.status.showMessage(
+                "the volume already reaches past the panel at any distance")
+            return
+        lo, hi = self.sp_dist.minimum(), self.sp_dist.maximum()
+        self.sp_dist.setValue(float(np.clip(d, lo, hi)))
+        if not lo <= d <= hi:
+            self.status.showMessage(
+                f"the data would fill the panel at {d:.0f} mm, outside the "
+                f"{lo:.0f}-{hi:.0f} mm range; the distance is at the limit")
 
 
 def _install_excepthook():
@@ -1214,10 +1403,12 @@ def _install_excepthook():
     sys.excepthook = hook
 
 
-def main():
+def main(volume: str | None = None):
     app = QApplication.instance() or QApplication([])
     app.setStyleSheet(STYLE)
     _install_excepthook()
     win = MainWindow()
     win.show()
+    if volume:
+        win.load_volume(volume)
     return app.exec()

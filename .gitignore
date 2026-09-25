@@ -13,6 +13,9 @@ tools/_video/
 # Editor and agent tooling.
 .claude/
 
+# Figures the example scripts write (XOD_OUT defaults to ./out beside them).
+examples/out/
+
 # Local-only assets kept out of the repository: never commit them.
 /Images/
 /Single crystal app/
