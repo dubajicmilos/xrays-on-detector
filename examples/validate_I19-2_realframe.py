@@ -72,15 +72,13 @@ def main():
 
 def _rel_angle(R2, R1, UB, dphi):
     """Smallest |angle - dphi| over lattice symmetry ops (m-3m holohedry)."""
-    import sys
-    # rspace3d is a separate package; set RSPACE3D_PATH if it is not importable
-    rs = os.environ.get("RSPACE3D_PATH", "")
-    if rs and rs not in sys.path:
-        sys.path.insert(0, rs)
-    from rspace3d.volume_builder import get_symmetry_operations
+    from itertools import permutations, product
+    # m-3m in Miller-index space: all 48 signed permutation matrices
+    m3m = [np.diag(s)[list(p)] for p in permutations(range(3))
+           for s in product((1, -1), repeat=3)]
     UBi = np.linalg.inv(UB)
     best = 1e9
-    for G in get_symmetry_operations("m-3m"):
+    for G in m3m:
         Rrel = R2 @ (UB @ np.linalg.inv(G) @ UBi) @ R1.T
         ang = np.degrees(np.arccos(np.clip((np.trace(Rrel) - 1) / 2, -1, 1)))
         if abs(ang - abs(dphi)) < abs(best - abs(dphi)):

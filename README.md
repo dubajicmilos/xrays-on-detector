@@ -98,7 +98,6 @@ no experimental data ships with the repository:
 | `XOD_REF_H5` | reference rspace3d/CrysAlisPro volume to compare against |
 | `XOD_CIF` | CIF for the superlattice example |
 | `XOD_OUT` | output folder for the example and validation scripts (default `./out` beside the script); `demo.py` writes its two files next to itself |
-| `RSPACE3D_PATH` | checkout of [rspace3d](https://github.com/dubajicmilos/rspace3d), only for the symmetry operations in `validate_I19-2_realframe.py` |
 
 ## Usage
 
