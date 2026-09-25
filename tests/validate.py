@@ -84,8 +84,8 @@ def test_structure_factors(crystal):
 if __name__ == "__main__":
     test_detector_geometry()
 
-    # B and C need |F(hkl)| from a CIF, which goes through pytilting and ASE.
-    # Test A is pure geometry, so a clone without those still gets a result:
+    # B and C need |F(hkl)| from a CIF, which goes through ASE.
+    # Test A is pure geometry, so a clone without ASE still gets a result:
     # say what was skipped rather than fail as if the physics were wrong.
     try:
         from ase.build import bulk

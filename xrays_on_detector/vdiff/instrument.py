@@ -307,8 +307,8 @@ class Instrument:
     def build_reflection_list(self, progress=None, q_max: float | None = None) -> int:
         """Generate hkl within the detector's Q range and their |F|^2.
 
-        `progress` is an optional callable taking (done, total); the CIF path
-        is a per-reflection Python loop into pytilting and can take seconds.
+        `progress` is an optional callable taking (done, total); with a CIF,
+        |F|^2 for 220 000 reflections of a 188-atom cell takes under a second.
         `q_max` overrides the panel's reach at the current arm position, so a
         caller can build a little past it and not rebuild on every step of a
         drag.
