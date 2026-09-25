@@ -1,6 +1,6 @@
 # xrays_on_detector
 
-Simulate the single-crystal diffraction **image on an area detector** of a
+Simulate the single-crystal diffraction image on an area detector of a
 six-circle diffractometer: given a CIF, a set of diffractometer angles, a
 detector (distance, size, pixel, arm angles) and a wavelength, compute which
 reflections are excited and where their spots land.
@@ -14,8 +14,8 @@ It stitches together two existing pieces:
 
 | Role | Package |
 |------|---------|
-| Structure factors `|F(hkl)|²` and reciprocal lattice (2π convention) | **pytilting** `StructureFactorCalculator` |
-| Six-circle rotation matrices, You (1999) convention | **diffcalc-core** |
+| Structure factors `\|F(hkl)\|²` and reciprocal lattice (2π convention) | pytilting `StructureFactorCalculator` |
+| Six-circle rotation matrices, You (1999) convention | diffcalc-core |
 
 ## Where each app lives
 
@@ -38,14 +38,14 @@ folder is the source of truth: edit here and re-sync the site from it.
 
 ## Physics
 
-Monochromatic beam, `k = 2π/λ`, incident along the lab **+y** axis. The diffcalc
-/ You (1999) frame is **+x vertical (up), +y along the beam, +z horizontal**;
+Monochromatic beam, `k = 2π/λ`, incident along the lab +y axis. The diffcalc
+/ You (1999) frame is +x vertical (up), +y along the beam, +z horizontal;
 `mu` and `nu` rotate about +x, `eta`, `phi` and `delta` about −z, and `chi`
 about +y (the beam). So `delta` moves the detector up and down and `nu` (called
 `gamma` at most beamlines) moves it left and right.
 
 The virtual diffractometer and the browser build read the panel out in the
-**beam's-eye view**: fast is `−z` and slow is `+x`, so `e_fast × e_slow = −arm`
+beam's-eye view: fast is `−z` and slow is `+x`, so `e_fast × e_slow = −arm`
 and the frame displayed with column 0 on the left and row 0 at the top is what
 you see standing at the sample looking downstream. That is the same picture the
 3D scene shows on the detector face, and the same handedness as `realframe`.
@@ -53,9 +53,9 @@ you see standing at the sample looking downstream. That is the same picture the
 1. Each reflection has a reciprocal-lattice point `Q = Z·U·B·(h,k,l)`, where
    `B` is the reciprocal matrix from the CIF, `U` the crystal orientation, and
    `Z = MU·ETA·CHI·PHI` the sample circles.
-2. Elastic scattering: `k_f = k_i + Q`, `|k_f| = k`. The signed **excitation
-   error** `ε = |k_i + Q| − k` measures the distance from the Ewald sphere.
-3. Bragg peaks have finite size, modelled as **isotropic 3D Gaussians** of
+2. Elastic scattering: `k_f = k_i + Q`, `|k_f| = k`. The signed excitation
+   error `ε = |k_i + Q| − k` measures the distance from the Ewald sphere.
+3. Bragg peaks have finite size, modelled as isotropic 3D Gaussians of
    width `σ` in reciprocal space. A reflection contributes with weight
    `exp(−ε²/2σ²)`, placed along `k̂_f = (k_i + Q)/|k_i + Q|`.
 4. The diffracted ray is projected onto a flat detector on the `NU·DELTA` arm;
@@ -73,7 +73,7 @@ pip install -e .
 ```
 
 That gets the simulation core (`numpy`, `diffcalc-core`). The rest are extras,
-so you only install what you actually use:
+so you install only what you use:
 
 | Extra | `pip install -e ".[extra]"` | For |
 |-------|------------------------------|-----|
@@ -82,7 +82,7 @@ so you only install what you actually use:
 | `data`  | fabio, h5py, scipy | reading real frames and S(q) volumes |
 | `cif`   | ase | symmetry expansion of a CIF |
 
-**Structure factors need `pytilting`, which is not on PyPI.** Point
+Structure factors need `pytilting`, which is not on PyPI. Point
 `PYTILTING_PATH` at a checkout (the directory whose `tests/` holds
 `structure_factor_calculator.py`). Without it the geometry, Ewald construction
 and the whole browser build still work; only `|F(hkl)|` from a CIF is
@@ -121,11 +121,11 @@ for a two-panel CsPbBr₃ example including detector motion, and a CSV export.
 
 ## Conventions
 
-- **Units**: 2π reciprocal convention throughout, `|Q| = 2π/d`, matching
+- Units: 2π reciprocal convention throughout, `|Q| = 2π/d`, matching
   pytilting's `B`. diffcalc's own `B`/`UB` use 1/d, so only its (unit-free)
   rotation matrices are used here.
-- **Angles** in degrees; **lengths** (`distance`, `pixel_size`) share one unit.
-- **`U`** defaults to identity (crystal Cartesian frame == phi frame at zero
+- Angles are in degrees; lengths (`distance`, `pixel_size`) share one unit.
+- `U` defaults to identity (crystal Cartesian frame == phi frame at zero
   angles). Pass your own orientation matrix for a mounted crystal.
 - Arbitrary CIFs are expanded to an explicit all-atom P1 cell with ASE before
   the structure-factor sum; `crystal.n_atoms` reports how many atoms were used.
@@ -152,33 +152,33 @@ maps, scipy for the omega solver); the 3D is a small software renderer
 the live frame is projectively texture-mapped onto the detector face as the arm
 swings.
 
-- **Detector presets**: PILATUS3 100K/300K/1M/2M/6M, EIGER2 X 1M/4M/9M/16M,
+- Detector presets: PILATUS3 100K/300K/1M/2M/6M, EIGER2 X 1M/4M/9M/16M,
   LAMBDA 750K, JUNGFRAU 1M, or type in any pixel count and pitch. Distance,
   wavelength/energy and preview binning are live.
-- **Motors**: `mu`, `omega`(=eta), `chi`, `phi` for the sample and `delta`,
+- Motors: `mu`, `omega`(=eta), `chi`, `phi` for the sample and `delta`,
   `gamma`(=nu) for the detector arm, as sliders and spin boxes. Each row has a
   run button that turns that circle continuously, and any number of them can
   run at once; one shared signed speed sets the rate and the direction, and
   angles wrap so a circle keeps going.
-- **Sample**: a lattice preset (runs with no CIF at all), **Load CIF ...** for
-  real `|F(hkl)|²` through pytilting, or **Load S(q) ...** for a measured
+- Sample: a lattice preset (runs with no CIF at all), *Load CIF ...* for
+  real `|F(hkl)|²` through pytilting, or *Load S(q) ...* for a measured
   reciprocal-space volume (see below), which puts real data on the panel instead
-  of calculated peaks. A **contrast** slider goes with it: measured S(q) spans
+  of calculated peaks. A *contrast* slider goes with it: measured S(q) spans
   orders of magnitude between a Bragg peak and the diffuse scattering around it.
-- **Orientation without writing a UB by hand**. Three free-rotation sliders turn
+- Orientation without writing a UB by hand. Three free-rotation sliders turn
   the crystal about the lab axes, or point a direction where you want it: *put
   (110) along the beam*, then optionally *spin about that axis until (001) is
   vertical*, which removes the leftover degree of freedom. `(hkl)` means the
   plane normal and `[uvw]` the real-space direction, which matters as soon as
-  the lattice is not cubic. The resulting **UB is displayed live** and can be
+  the lattice is not cubic. The resulting UB is displayed live and can be
   copied, in the 2π, 1/d or λ-scaled (CrysAlisPro) convention. The sliders
   compose on top of an alignment rather than discarding it.
-- **Two geometries**. *Transmission* is the ordinary single-crystal rotation
+- Two geometries. *Transmission* is the ordinary single-crystal rotation
   case. *Reflection* adds a sample surface with a chosen `(hkl)`: the incidence
   angle `alpha` is displayed, and any reflection whose incoming or outgoing beam
   is below the surface horizon is removed rather than drawn, which is the actual
   physical difference between the two cases.
-- **Drive to a reflection**: type `h k l`, press *Find omega*, and it solves
+- Drive to a reflection: type `h k l`, press *Find omega*, and it solves
   `|k_i + Q(omega)| = k` for every `omega` that puts that reflection on the
   Ewald sphere at the current `chi`/`phi`/`mu`, listing the `delta`/`gamma` the
   arm needs for each. *Drive there* moves the motors onto it.
@@ -187,7 +187,7 @@ Verified end to end: a solved `omega` lands the reflection on the Ewald sphere
 to `|eps| < 1e-11 1/A`, and *Aim detector* puts it on the beam centre to
 0.000 px. `examples/virtual_diffractometer.py` is the same launcher.
 
-## Browser build: the Diffraction Game (`web/`)
+## Browser build: the Game of Diffraction (`web/`)
 
 A client-side JavaScript port of the same forward model, deployed as a tab on
 <https://dubajicmilos.github.io/diffraction/>. No backend: everything runs in the
@@ -202,16 +202,16 @@ A separate, self-contained package for the other kind of question: not "where
 does this reflection land on my detector" but "what does this structure's
 diffraction pattern look like". It reads any CIF and computes:
 
-- **reciprocal-lattice sections** — the undistorted plane a precession camera
+- reciprocal-lattice sections: the undistorted plane a precession camera
   records, named by a zone axis `[uvw]` and a layer `n`, so `[100]` layer 0 is
   the *0kl* section, layer 3 the *3kl* one, and `[110]` or `[123]` are the
   diagonal cuts;
-- **selected-area electron diffraction** — the same zone through a curved
+- selected-area electron diffraction: the same zone through a curved
   Ewald sphere, with a `sinc²` relrod, so the higher-order Laue zones appear;
-- **powder patterns** — multiplicity summed by construction rather than looked
+- powder patterns, with the multiplicity summed by construction rather than looked
   up from the Laue class.
 
-Each for **X-rays, neutrons or electrons**. Deuterium keeps its own neutron
+Each is available for X-rays, neutrons or electrons. Deuterium keeps its own neutron
 scattering length: `b(H)` is −3.739 fm and `b(D)` is +6.671 fm, opposite in
 sign, so folding D into H would invert its contribution.
 
@@ -228,15 +228,13 @@ The browser build is `web/sc/`, deployed at `/diffraction/single-crystal/`. It
 shares the CIF reader and the reciprocal lattice with the Game of Diffraction
 next door, and the CIF you upload never leaves your machine.
 
-**Why this is a rewrite and not a port.** The obvious ancestor,
-`pytilt-diffraction`, sums only over the atoms *listed* in the CIF and never
-applies the symmetry operators, so any file giving an asymmetric unit comes out
-wrong while a spot check still passes. On rutile written as its 2-site
-asymmetric unit with 16 operators, ignoring the expansion puts (200) out by
-+353%, (101) by +71% and (211) by −26%. Here the expansion happens in the
-reader, and the sum runs over the full P1 cell.
+The CIF reader applies the file's symmetry operators, and the structure-factor
+sum runs over the full P1 cell, so a CIF that lists only the asymmetric unit
+gives correct intensities. For rutile written as its 2-site asymmetric unit
+with 16 operators, summing over the listed atoms alone would put (200) out by
++353%, (101) by +71% and (211) by −26%.
 
-Verified against **pymatgen**, an independent CIF reader, symmetry expansion
+Verified against pymatgen, an independent CIF reader, symmetry expansion
 and form factor table, to within 1.2 on a 0-100 intensity scale on every
 bundled structure, the check allowing 2.0 (`python tests/test_single_crystal.py`). The
 JavaScript is held to the Python by `node web/test/parity_sc.mjs`, which agrees
@@ -261,10 +259,10 @@ hkl_rec, fast, slow, eps = predict_recorded(res.R, UB, det, hkl, osc_axis=(0, 1,
 ```
 
 Validated on Diamond I19-2 MAPbBr3 Eiger frames (`examples/validate_I19-2_realframe.py`):
-- **8/8** observed spots on one frame indexed and predicted to **~1.6 px** rms;
-- frame-to-frame orientation matches the recorded phi increment to **<0.11°**
+- 8/8 observed spots on one frame indexed and predicted to ~1.6 px rms;
+- frame-to-frame orientation matches the recorded phi increment to <0.11°
   (Δphi 5–30°), validating the rotation convention;
-- observed spot |Q| match the reciprocal lattice to a median **0.18%**.
+- observed spot |Q| match the reciprocal lattice to a median 0.18%.
 
 `examples/I19-2_superlattice.py` adds the I4/mcm octahedral-tilt superlattice
 for all three twin domains (|F| from a 2×2×2 CIF via pytilting). On a single
@@ -289,7 +287,21 @@ image, coverage = project_volume(detector, vol, wavelength=vol.wavelength,
                                  ZUB=Z @ U @ B)      # sample circles, U, B
 ```
 
-In the app it is **Load S(q) ...** (or start on one with
+For a pixel whose outgoing unit direction is k̂, the scattering vector is
+Q<sub>lab</sub> = k (k̂ − beam) with k = 2π/λ, and the volume is sampled at
+hkl = (Z·U·B)<sup>−1</sup> Q<sub>lab</sub>: the same Z·U·B product that places a
+calculated reflection, read backwards.
+
+![A measured S(q) volume projected onto a detector](examples/I19-2_sq_projection.png)
+
+*A MAPbBr₃ volume measured at 230 K on I19-2 and reconstructed with rspace3d,
+projected onto a flat detector 234 mm from the sample with all circles at
+zero (output of `examples/project_sq_volume.py`). Bragg peaks and diffuse
+streaks appear where the Ewald sphere cuts the data; white areas were not
+measured in the source volume. The strongest measured peak lands 1.4 px from
+the pixel that the six-circle model predicts.*
+
+In the app it is *Load S(q) ...* (or start on one with
 `python -m xrays_on_detector.vdiff --sq VOLUME.h5`), and then the motors sweep
 the measured data across the panel exactly as they sweep calculated peaks. Needs
 `h5py`. `examples/project_sq_volume.py` does the same headless, from `XOD_SQ_H5`.
@@ -301,20 +313,20 @@ on load, since that is the sphere the data were collected on.
 
 Four things worth knowing:
 
-- **The file's UB is used for the cell, never as an orientation.** A CrysAlisPro
+- The file's UB is used for the cell, never as an orientation. A CrysAlisPro
   UB lives in CrysAlisPro's own frame, which differs from this lab frame by a
   fixed rotation the file does not record. So the volume arrives as a lattice
   with `U = I` and you orient it as usual.
-- **Coverage is reported, and it is usually not 100%.** A reconstruction covers a
+- Coverage is reported, and it is usually not 100%. A reconstruction covers a
   box a few r.l.u. wide, and a short wavelength makes the Ewald sphere flat: at
   72 keV a ±6 r.l.u. volume subtends only ~10° in 2θ, so at 200 mm it lands in a
   small central disc and the rest of the panel reads zero for want of data, not
   of scattering. *Move detector back to fit the volume* solves for the distance
   that spreads the data across the panel (~690 mm in that case).
-- **No polarisation or obliquity factor is applied.** The volume already holds
+- No polarisation or obliquity factor is applied. The volume already holds
   measured intensity; multiplying it by a Thomson factor would add a distortion
   rather than remove one.
-- **Holes in the source volume come through as holes.** rspace3d's CrysAlisPro
+- Holes in the source volume come through as holes. rspace3d's CrysAlisPro
   unwarp route writes an unmeasured voxel as 0, not NaN, so a *raw*
   (unsymmetrised) reconstruction from it still
   carries the original detector's module gaps and the beam stop, and they
@@ -334,7 +346,7 @@ half-voxel registration of the reconstruction's own grid, not an error here.
 
 ## Current scope and limits
 
-Built: **monochromatic, single frame, You six-circle, Gaussian peaks.**
+Built: monochromatic, single frame, You six-circle, Gaussian peaks.
 Not yet (natural extensions):
 - rotation series / oscillation movies as circles sweep;
 - Lorentz factor for integrated (rotation) intensities; only polarization is
@@ -351,7 +363,7 @@ International Tables values, but check that provenance before redistributing
 them under a different licence.
 
 The neutron scattering lengths (`single_crystal/data/`, mirrored into
-`web/data/`) come from **pymatgen**, which is MIT-licensed like this project.
+`web/data/`) come from pymatgen, which is MIT-licensed like this project.
 The electron scattering factors are the five-Gaussian fit of Peng, Ren, Dudarev
 and Whelan (1996, Acta Cryst. A52, 257), published as International Tables for
 Crystallography Vol. C, Table 4.3.2.3: physical constants, which carry no
