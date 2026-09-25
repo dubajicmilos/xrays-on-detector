@@ -5,6 +5,11 @@ six-circle diffractometer: given a CIF, a set of diffractometer angles, a
 detector (distance, size, pixel, arm angles) and a wavelength, compute which
 reflections are excited and where their spots land.
 
+The opposite direction, from measured frames to a 3D reciprocal-space volume,
+is the job of [rspace3d](https://github.com/dubajicmilos/rspace3d). This package
+reads such volumes (see *Measured S(q) on the detector* below) but does not
+make them.
+
 It stitches together two existing pieces:
 
 | Role | Package |
@@ -74,28 +79,25 @@ so you only install what you actually use:
 |-------|------------------------------|-----|
 | `vdiff` | PyQt6, matplotlib, scipy | the virtual diffractometer app |
 | `singlecrystal` | PyQt6, matplotlib | the single-crystal CIF viewer app |
-| `data`  | fabio, h5py, scipy | reading real frames, writing volumes |
+| `data`  | fabio, h5py, scipy | reading real frames and S(q) volumes |
 | `cif`   | ase | symmetry expansion of a CIF |
-| `gpu`   | cupy | CUDA reconstruction (match your toolkit, e.g. `cupy-cuda12x`) |
 
 **Structure factors need `pytilting`, which is not on PyPI.** Point
 `PYTILTING_PATH` at a checkout (the directory whose `tests/` holds
-`structure_factor_calculator.py`). Without it the geometry, Ewald construction,
-reconstruction and the whole browser build still work; only `|F(hkl)|` from a
-CIF is unavailable, and `Crystal.from_cif` says so rather than failing quietly.
+`structure_factor_calculator.py`). Without it the geometry, Ewald construction
+and the whole browser build still work; only `|F(hkl)|` from a CIF is
+unavailable, and `Crystal.from_cif` says so rather than failing quietly.
 
 The example and validation scripts read their paths from the environment, since
 no experimental data ships with the repository:
 
 | Variable | Meaning |
 |----------|---------|
-| `XOD_RAW` | folder of CBF frames (and CrysAlisPro's `unwarp/`) |
+| `XOD_RAW` | folder of CBF frames |
 | `XOD_NAME` | run stem, so frame *n* is `<XOD_RAW>/<XOD_NAME>_01_000n.cbf` |
 | `XOD_REF_H5` | reference rspace3d/CrysAlisPro volume to compare against |
 | `XOD_CIF` | CIF for the superlattice example |
-| `XOD_OUT` | output folder for the reconstruction and validation scripts (default `./out` beside the script); `demo.py` writes its two files next to itself |
-| `NFRAMES` | how many frames the GPU reconstruction scripts read (default 1750, lower it for a smoke test) |
-| `DATASET` | a CrysAlisPro run folder for `reconstruct_from_par.py` (frames plus the `.par`) |
+| `XOD_OUT` | output folder for the example and validation scripts (default `./out` beside the script); `demo.py` writes its two files next to itself |
 | `RSPACE3D_PATH` | checkout of [rspace3d](https://github.com/dubajicmilos/rspace3d), only for the symmetry operations in `validate_I19-2_realframe.py` |
 
 ## Usage
@@ -273,8 +275,8 @@ shows up far more clearly in the integrated 3D reconstruction than on one still)
 
 ## Measured S(q) on the detector (`sqvolume.py`)
 
-The reverse of what `reconstruct.py` (and rspace3d, and CrysAlisPro) do. Those
-turn a series of detector frames into a 3D reciprocal-space volume; this reads
+The reverse of what a reconstruction (rspace3d, CrysAlisPro) does. That turns
+a series of detector frames into a 3D reciprocal-space volume; this reads
 such a volume back and asks what a detector would record from it. Every pixel is
 mapped to a point in reciprocal space and the volume is interpolated there, so
 Bragg peaks, superlattice peaks and diffuse scattering all appear wherever the
@@ -302,8 +304,8 @@ Four things worth knowing:
 
 - **The file's UB is used for the cell, never as an orientation.** A CrysAlisPro
   UB lives in CrysAlisPro's own frame, which differs from this lab frame by a
-  fixed rotation the file does not record (`RECONSTRUCTION_UNIVERSAL.md` §2). So
-  the volume arrives as a lattice with `U = I` and you orient it as usual.
+  fixed rotation the file does not record. So the volume arrives as a lattice
+  with `U = I` and you orient it as usual.
 - **Coverage is reported, and it is usually not 100%.** A reconstruction covers a
   box a few r.l.u. wide, and a short wavelength makes the Ewald sphere flat: at
   72 keV a ±6 r.l.u. volume subtends only ~10° in 2θ, so at 200 mm it lands in a
@@ -313,14 +315,15 @@ Four things worth knowing:
 - **No polarisation or obliquity factor is applied.** The volume already holds
   measured intensity; multiplying it by a Thomson factor would add a distortion
   rather than remove one.
-- **Holes in the source volume come through as holes.** rspace3d writes an
-  unmeasured voxel as 0, not NaN, so a *raw* (unsymmetrised) reconstruction still
+- **Holes in the source volume come through as holes.** rspace3d's CrysAlisPro
+  unwarp route writes an unmeasured voxel as 0, not NaN, so a *raw*
+  (unsymmetrised) reconstruction from it still
   carries the original detector's module gaps and the beam stop, and they
   reappear on the simulated panel as zero-valued stripes cutting across it at
   whatever angle the Ewald sphere now meets them. That is the data, not a bug;
-  a symmetry-averaged volume has them filled in. Volumes written by
-  `reconstruct.save_rspace3d_h5` do use NaN, and those voxels are read as zero
-  with the fraction reported.
+  a symmetry-averaged volume has them filled in. Volumes from rspace3d's
+  raw-frame reconstruction (`rspace3d.rawrecon`) do use NaN, and those voxels
+  are read as zero with the fraction reported.
 
 Validated (`python tests/test_sqvolume.py`): trilinear sampling is exact on a
 linear field; the pixel → hkl → pixel round trip agrees with `Detector.project`

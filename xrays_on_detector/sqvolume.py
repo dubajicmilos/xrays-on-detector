@@ -1,10 +1,11 @@
 """Project a measured reciprocal-space volume S(q) back onto an area detector.
 
-This is the inverse of :mod:`xrays_on_detector.reconstruct`. That module maps
-every detector pixel of a rotation series into a voxel grid over (h, k, l); this
-one takes such a grid - an rspace3d / CrysAlisPro HDF5 volume - and asks the
-opposite question: with the crystal at these angles and the detector there,
-which part of the measured S(q) does the panel cut, and what does it record?
+This is the inverse of a reconstruction (rspace3d, CrysAlisPro). A
+reconstruction maps every detector pixel of a rotation series into a voxel grid
+over (h, k, l); this module takes such a grid - an rspace3d / CrysAlisPro HDF5
+volume - and asks the opposite question: with the crystal at these angles and
+the detector there, which part of the measured S(q) does the panel cut, and
+what does it record?
 
 The map is the same one, read backwards. For a pixel whose outgoing unit
 direction is khat,
@@ -27,9 +28,9 @@ Orientation
 -----------
 The file's ``UB`` is used only for the **cell metric**, never as an orientation.
 A CrysAlisPro UB is expressed in CrysAlisPro's own frame, which differs from the
-lab frame here by a fixed rotation that the file does not record (see
-RECONSTRUCTION_UNIVERSAL.md). So the volume arrives as a lattice with U = I and
-the crystal is oriented with the usual controls.
+lab frame here by a fixed rotation that the file does not record. So the volume
+arrives as a lattice with U = I and the crystal is oriented with the usual
+controls.
 """
 from __future__ import annotations
 
@@ -38,7 +39,6 @@ from dataclasses import dataclass
 import numpy as np
 
 from .geometry import BEAM
-from .reconstruct import _reciprocal_cell
 
 # Roughly 200 M voxels, i.e. 800 MB as float32, is the default budget; anything
 # larger is block-averaged on the way in rather than silently swallowing RAM.
@@ -85,8 +85,8 @@ class SqVolume:
         """Read an rspace3d / CrysAlisPro reconstruction.
 
         Expects ``/data``, ``/H``, ``/K``, ``/L``, ``/UB`` and a ``wavelength``
-        attribute, which is the layout :func:`reconstruct.save_rspace3d_h5`
-        writes and the rsp_viewer reads.
+        attribute, which is the layout rspace3d writes and its rsp_viewer
+        reads.
 
         A volume larger than `max_voxels` is block-averaged by an integer factor
         while it is read, so a multi-gigabyte raw reconstruction still opens.
@@ -237,6 +237,20 @@ def _check_uniform(axis: np.ndarray, name: str, path: str) -> None:
             f"{d.min():.6g}..{d.max():.6g}); this reader interpolates on a "
             "regular grid only."
         )
+
+
+def _reciprocal_cell(recip):
+    """Direct cell dict (a,b,c,alpha,beta,gamma) from reciprocal vectors
+    (columns a*,b*,c* in 1/d)."""
+    Gstar = recip.T @ recip
+    G = np.linalg.inv(Gstar)
+    a, b, c = np.sqrt(np.diag(G))
+
+    def ang(i, j, x, y):
+        return float(np.degrees(np.arccos(np.clip(G[i, j] / (x * y), -1, 1))))
+
+    return dict(a=float(a), b=float(b), c=float(c),
+                alpha=ang(1, 2, b, c), beta=ang(0, 2, a, c), gamma=ang(0, 1, a, b))
 
 
 def _bin_factor(shape, max_voxels: int) -> int:

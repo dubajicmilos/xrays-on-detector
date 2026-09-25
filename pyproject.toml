@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "xrays-on-detector"
 version = "0.1.0"
-description = "Six-circle diffractometer simulation, reciprocal-space reconstruction and a virtual instrument"
+description = "Six-circle diffractometer simulation and a virtual instrument: from reciprocal space to the image on the detector"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -32,13 +32,11 @@ dependencies = [
 # rspace3d reciprocal-space volume.
 vdiff = ["PyQt6>=6.5", "matplotlib>=3.7", "scipy>=1.10", "h5py>=3.8"]
 singlecrystal = ["PyQt6>=6.5", "matplotlib>=3.7"]
-# Reading real frames and writing reconstructed volumes.
+# Reading real frames and measured S(q) volumes.
 data = ["fabio>=2023.1", "h5py>=3.8", "scipy>=1.10"]
 # Structure factors from a CIF. ASE expands the symmetry; |F(hkl)| itself comes
 # from pytilting, which is not on PyPI: point PYTILTING_PATH at a checkout.
 cif = ["ase>=3.22"]
-# CUDA reconstruction; pick the wheel matching your toolkit, e.g. cupy-cuda12x.
-gpu = ["cupy"]
 
 [project.urls]
 Homepage = "https://dubajicmilos.github.io/diffraction/"
