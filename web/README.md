@@ -75,7 +75,8 @@ node web/test/parity_pp.mjs        # pitch–phi vs the standalone tool's record
 ```
 
 `parity.mjs` compares circle matrices, B matrices, `|F(hkl)|²` (against
-pytilting), the detector frame, projection, reach and binning, a full Ewald pass
+`xrays_on_detector.crystal`), the detector frame, projection, reach and
+binning, a full Ewald pass
 (identical hkl, `khat`, `eps`, excitation, 2θ, polarization),
 `rotationBetween`/`eulerMatrix`, the align tools, UB in all three conventions,
 and every solver. The largest deviation anywhere is 2e-10, which is the bisection
@@ -118,8 +119,8 @@ Structures ship as atom lists, not `|F|²` tables. The Cromer-Mann form factors
 need only nine coefficients per element and a simple sum, so the browser
 computes the structure factors itself. CsPbBr3 takes 0.4 kB as atoms, whereas a
 precomputed table would take hundreds of kB and be fixed at one `Q_max`. The
-coefficient table is exported directly from pytilting, so the JS cannot drift
-from it.
+coefficient table is exported from `single_crystal/data/`, so the JS cannot
+drift from the Python.
 
 ## Still open
 

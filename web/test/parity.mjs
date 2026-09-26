@@ -73,7 +73,7 @@ const relDiff = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
   const hkl = Int32Array.from(sf.hkl.flat());
   const F2 = P.structureFactors(table, cspbbr3.atoms, B, hkl);
   const worst = maxAbs(Array.from(F2).map((v, i) => relDiff(v, sf.F2[i])));
-  report('|F(hkl)|^2 vs pytilting', worst, 1e-9,
+  report('|F(hkl)|^2 vs xrays_on_detector.crystal', worst, 1e-9,
          `${sf.hkl.length} reflections, ${cspbbr3.atoms.length} atoms`);
   // and the B from the CIF must match the one we derive from the cell
   const Bcell = P.bMatrix(cspbbr3.cell.a, cspbbr3.cell.b, cspbbr3.cell.c,

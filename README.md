@@ -10,11 +10,11 @@ is the job of [rspace3d](https://github.com/dubajicmilos/rspace3d). This package
 reads such volumes (see *Measured S(q) on the detector* below) but does not
 make them.
 
-It stitches together two existing pieces:
+It stitches together two pieces:
 
 | Role | Package |
 |------|---------|
-| Structure factors `\|F(hkl)\|²` and reciprocal lattice (2π convention) | pytilting `StructureFactorCalculator` |
+| Structure factors `\|F(hkl)\|²` and reciprocal lattice (2π convention) | `xrays_on_detector.crystal`, with `single_crystal`'s Cromer-Mann table |
 | Six-circle rotation matrices, You (1999) convention | diffcalc-core |
 
 ## Where each app lives
@@ -82,11 +82,11 @@ so you install only what you use:
 | `data`  | fabio, h5py, scipy | reading real frames and S(q) volumes |
 | `cif`   | ase | symmetry expansion of a CIF |
 
-Structure factors need `pytilting`, which is not on PyPI. Point
-`PYTILTING_PATH` at a checkout (the directory whose `tests/` holds
-`structure_factor_calculator.py`). Without it the geometry, Ewald construction
-and the whole browser build still work; only `|F(hkl)|` from a CIF is
-unavailable, and `Crystal.from_cif` says so rather than failing quietly.
+`Crystal.from_cif` expands a CIF's symmetry with ASE, so it needs the `cif`
+extra, unless the CIF already lists every atom of the cell and you pass
+`expand_symmetry=False`. The Cromer-Mann form factors ship with the package.
+Without ASE the geometry, the Ewald construction and the whole browser build
+still work.
 
 The example and validation scripts read their paths from the environment, since
 no experimental data ships with the repository:
@@ -121,9 +121,9 @@ for a two-panel CsPbBr₃ example including detector motion, and a CSV export.
 
 ## Conventions
 
-- Units: 2π reciprocal convention throughout, `|Q| = 2π/d`, matching
-  pytilting's `B`. diffcalc's own `B`/`UB` use 1/d, so only its (unit-free)
-  rotation matrices are used here.
+- Units: 2π reciprocal convention throughout, `|Q| = 2π/d`, with `B` in the
+  standard setting (a along x, b in the xy plane). diffcalc's own `B`/`UB` use
+  1/d, so only its (unit-free) rotation matrices are used here.
 - Angles are in degrees; lengths (`distance`, `pixel_size`) share one unit.
 - `U` defaults to identity (crystal Cartesian frame == phi frame at zero
   angles). Pass your own orientation matrix for a mounted crystal.
@@ -161,7 +161,7 @@ swings.
   run at once; one shared signed speed sets the rate and the direction, and
   angles wrap so a circle keeps going.
 - Sample: a lattice preset (runs with no CIF at all), *Load CIF ...* for
-  real `|F(hkl)|²` through pytilting, or *Load S(q) ...* for a measured
+  real `|F(hkl)|²` from its atoms, or *Load S(q) ...* for a measured
   reciprocal-space volume (see below), which puts real data on the panel instead
   of calculated peaks. A *contrast* slider goes with it: measured S(q) spans
   orders of magnitude between a Bragg peak and the diffuse scattering around it.
@@ -265,7 +265,7 @@ Validated on Diamond I19-2 MAPbBr3 Eiger frames (`examples/validate_I19-2_realfr
 - observed spot |Q| match the reciprocal lattice to a median 0.18%.
 
 `examples/I19-2_superlattice.py` adds the I4/mcm octahedral-tilt superlattice
-for all three twin domains (|F| from a 2×2×2 CIF via pytilting). On a single
+for all three twin domains (|F| from a 2×2×2 CIF). On a single
 0.2° still the main Bragg peaks are ~80% detectable, and predicted-|F|² vs
 measured superlattice intensity correlate at ~+0.6 to +0.7 (faint superlattice
 shows up far more clearly in the integrated 3D reconstruction than on one still).
@@ -358,9 +358,9 @@ Not yet (natural extensions):
 ## Licence
 
 MIT, see [LICENSE](LICENSE). The bundled Cromer-Mann coefficients under
-`web/data/` were exported from `pytilting`'s tables; they are the published
-International Tables values, but check that provenance before redistributing
-them under a different licence.
+`single_crystal/data/` and `web/data/` are the published values of
+International Tables for Crystallography Vol. C; check that provenance before
+redistributing them under a different licence.
 
 The neutron scattering lengths (`single_crystal/data/`, mirrored into
 `web/data/`) come from pymatgen, which is MIT-licensed like this project.

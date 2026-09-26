@@ -242,7 +242,7 @@ export function qCryst(B, hkl) {
 }
 
 // ---------------------------------------------------------------------------
-// Structure factors (Cromer-Mann, matching pytilting)
+// Structure factors (Cromer-Mann, matching xrays_on_detector.crystal)
 // ---------------------------------------------------------------------------
 
 /**
@@ -263,7 +263,7 @@ export function scatteringFactor(table, element, s) {
  * |F(hkl)|^2 for a flat hkl array.
  *
  * F = sum_atoms occ * f(s) * exp(-B_iso s^2) * exp(2 pi i (hx + ky + lz)),
- * which is pytilting's expression exactly. `atoms` is a list of
+ * the expression xrays_on_detector.crystal evaluates. `atoms` is a list of
  * {element, x, y, z, occ, B} in fractional coordinates.
  */
 export function structureFactors(table, atoms, B, hkl) {
