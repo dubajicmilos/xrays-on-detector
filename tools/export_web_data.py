@@ -81,48 +81,6 @@ def export_scattering_factors(out_dir):
 # ---------------------------------------------------------------------------
 
 
-def _site_displacements(cif_path):
-    """Per-site B from the CIF, in the order the atom_site loop lists them.
-
-    ASE expands the symmetry and keeps occupancies, but drops the displacement
-    parameters, and a structure factor without them is wrong at high angle. So
-    read them here and map them back through ``spacegroup_kinds``. A site given
-    as U gets B = 8 pi^2 U; a site giving neither gets 0.
-    """
-    text = open(cif_path, encoding="utf-8", errors="replace").read()
-    out = []
-    for block in re.finditer(r"loop_\s*((?:\s*_atom_site_\S+\s*\n)+)(.*?)(?=\n\s*(?:loop_|_|$))",
-                             text, re.S):
-        headers = re.findall(r"_atom_site_(\S+)", block.group(1))
-        if "fract_x" not in headers:
-            continue
-        b_col = next((headers.index(h) for h in headers if h == "B_iso_or_equiv"), None)
-        u_col = next((headers.index(h) for h in headers if h == "U_iso_or_equiv"), None)
-        for line in block.group(2).splitlines():
-            line = line.strip()
-            if not line or line.startswith(("_", "#", "loop_")):
-                continue
-            vals = line.split()
-            if len(vals) < len(headers):
-                continue
-
-            def num(col):
-                if col is None:
-                    return None
-                v = re.sub(r"\(\d+\)$", "", vals[col])   # strip the e.s.d.
-                try:
-                    return float(v)
-                except ValueError:
-                    return None
-
-            b, u = num(b_col), num(u_col)
-            if b is None and u is not None:
-                b = 8.0 * np.pi ** 2 * u
-            out.append(b or 0.0)
-        break
-    return out
-
-
 def _space_group(cif_path):
     """The CIF's Hermann-Mauguin symbol, or None if it does not assert one.
 
@@ -140,46 +98,29 @@ def _space_group(cif_path):
 
 
 def export_structure(cif_path, name, out_dir):
-    """Expand a CIF to P1 with ASE and write cell + atoms as compact JSON."""
-    from ase.io import read
+    """Write a CIF's cell and full P1 atom list as compact JSON.
 
-    atoms = read(cif_path)
-    cell = atoms.cell.cellpar()
-    frac = atoms.get_scaled_positions()
-    syms = atoms.get_chemical_symbols()
+    The atoms are the ones xrays_on_detector.crystal sums over: ASE's symmetry
+    expansion, with each atom's site occupancy and B. So the browser and the
+    Python compute |F|^2 from the same structure.
+    """
+    from xrays_on_detector.crystal import Crystal
 
-    # ASE maps every expanded atom back to the site it came from, which is how
-    # occupancies and B values follow the symmetry expansion.
-    kinds = atoms.arrays.get("spacegroup_kinds")
-    occ_by_site = atoms.info.get("occupancy", {})
-    b_by_site = _site_displacements(cif_path)
-
-    def site_of(i):
-        return int(kinds[i]) if kinds is not None else i
-
-    def occ_of(i, sym):
-        site = occ_by_site.get(str(site_of(i)), {})
-        return float(site.get(sym, 1.0)) if site else 1.0
-
-    def b_of(i):
-        s = site_of(i)
-        return float(b_by_site[s]) if s < len(b_by_site) else 0.0
-
+    c = Crystal.from_cif(cif_path)
     doc = {
         "name": name,
         "source": os.path.basename(cif_path),
         "spaceGroup": _space_group(cif_path),
-        "cell": {"a": float(cell[0]), "b": float(cell[1]), "c": float(cell[2]),
-                 "alpha": float(cell[3]), "beta": float(cell[4]),
-                 "gamma": float(cell[5])},
+        "cell": {k: float(c.cell[k])
+                 for k in ("a", "b", "c", "alpha", "beta", "gamma")},
         "atoms": [
             {"element": s,
              "x": round(float(p[0]), 6),
              "y": round(float(p[1]), 6),
              "z": round(float(p[2]), 6),
-             "occ": round(occ_of(i, s), 4),
-             "B": round(b_of(i), 4)}
-            for i, (s, p) in enumerate(zip(syms, frac))
+             "occ": round(float(o), 4),
+             "B": round(float(b), 4)}
+            for s, p, o, b in zip(c.elements, c.frac, c.occ, c.B_iso)
         ],
     }
     path = os.path.join(out_dir, f"{name}.json")
@@ -196,7 +137,7 @@ def export_structure(cif_path, name, out_dir):
 # ---------------------------------------------------------------------------
 
 
-def build_fixture(structure_doc):
+def build_fixture(structure_doc, b_structure_doc=None):
     """Reference values covering every ported function."""
     fx = {}
 
@@ -235,6 +176,21 @@ def build_fixture(structure_doc):
         "hkl": [[int(x) for x in r] for r in hkl],
         "F2": [float(v) for v in crystal.structure_factor_mag2(hkl)],
     }
+
+    # -- structure factors with displacement parameters, end to end: straight
+    # from the CIF here, from the exported atom list in parity.mjs
+    if b_structure_doc is not None:
+        cb = Crystal.from_cif(b_structure_doc["_cif_path"])
+        hkl_b = np.array([[1, 0, 0], [1, 1, 0], [1, 1, 1], [2, 0, 0], [2, 1, 0],
+                          [2, 1, 1], [2, 2, 0], [3, 1, 0], [2, 2, 2], [4, 0, 0],
+                          [4, 2, 0], [4, 2, 2], [5, 3, 1], [6, 0, 0], [6, 4, 2],
+                          [8, 0, 0]], dtype=int)
+        fx["structure_factors_b"] = {
+            "structure": b_structure_doc["name"],
+            "B": _m(cb.B),
+            "hkl": [[int(x) for x in r] for r in hkl_b],
+            "F2": [float(v) for v in cb.structure_factor_mag2(hkl_b)],
+        }
 
     # -- detector frame and projection
     det = LabDetector(distance=200.0, n_fast=1475, n_slow=1679,
@@ -426,7 +382,10 @@ def main():
     doc = docs[0]
 
     print("parity fixture:")
-    fx = build_fixture(doc)
+    # the first bundled structure whose atoms carry a B, for the
+    # end-to-end structure-factor check
+    bdoc = next((d for d in docs if any(a["B"] for a in d["atoms"])), None)
+    fx = build_fixture(doc, bdoc)
     path = os.path.join(test_dir, "fixture.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(fx, fh, separators=(",", ":"))

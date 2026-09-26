@@ -81,6 +81,26 @@ const relDiff = (a, b) => Math.abs(a - b) / Math.max(1, Math.abs(b));
   report('B from exported cell vs CIF B', matDiff(Bcell, B), 1e-12);
 }
 
+// --- 3b. structure factors with displacement parameters, end to end -------
+// The first bundled structure whose atoms carry B, as exported, against |F|^2
+// computed in Python straight from its CIF. The bundle rounds B to four
+// decimals, which moves |F|^2 of MAPbI3 Pm-3m by up to 2e-4; a missing or
+// misassigned B moves it by 8% at (100) and by 100x at (800).
+{
+  const sb = fx.structure_factors_b;
+  if (!sb) {
+    report('|F(hkl)|^2 with B, bundle vs CIF', Infinity, 1e-3,
+           'no bundled structure carries displacement parameters');
+  } else {
+    const doc = JSON.parse(readFileSync(
+      join(here, '..', 'data', `${sb.structure}.json`), 'utf8'));
+    const F2 = P.structureFactors(table, doc.atoms, sb.B, Int32Array.from(sb.hkl.flat()));
+    const worst = maxAbs(Array.from(F2).map((v, i) => relDiff(v, sb.F2[i])));
+    report('|F(hkl)|^2 with B, bundle vs CIF', worst, 1e-3,
+           `${sb.structure}, ${sb.hkl.length} reflections`);
+  }
+}
+
 // --- 4. detector -----------------------------------------------------------
 {
   const d = fx.detector;

@@ -10,17 +10,17 @@ with s = |Q| / 4 pi and f_j the Cromer-Mann X-ray form factor from
 single_crystal's table (single_crystal.scatter); an element the table does not
 cover raises a KeyError when |F|^2 is computed. F(000) is returned as 0.
 
-The sum applies no symmetry of its own. By default ASE reads the CIF, applies
-its space-group symmetry and writes the full cell out as a P1 CIF, and the
-atoms are read back from that. The P1 CIF lists positions, and occupancies to
-four decimals, but no displacement parameters, so on this path every B_j is 0
-and no Debye-Waller factor is applied. With expand_symmetry=False the atoms are
-used exactly as the CIF lists them, each with its own B, or 8 pi^2 U where only
-U is given. Crystal.n_atoms reports how many atoms the sum runs over.
+The sum applies no symmetry of its own. By default ASE reads the CIF and
+applies its space-group symmetry, and every atom of the full cell takes the
+occupancy and the isotropic displacement parameter of the site it came from:
+B_iso_or_equiv, or 8 pi^2 U_iso_or_equiv where the CIF gives U instead, or 0
+where it gives neither. With expand_symmetry=False the atoms are used exactly
+as the CIF lists them, with the same rule for B. Crystal.n_atoms reports how
+many atoms the sum runs over. The browser build's bundled structures are
+exported from this same atom list (tools/export_web_data.py).
 """
 from __future__ import annotations
 
-import io
 import re
 from dataclasses import dataclass
 
@@ -41,15 +41,36 @@ _CELL = ("a", "b", "c", "alpha", "beta", "gamma")
 _BLOCK = 1 << 16
 
 
-def _p1_text(cif_path: str) -> str:
-    """The CIF read by ASE, which applies its symmetry, and written back by
-    ASE as an explicit all-atom P1 CIF: positions at full precision,
-    occupancies to four decimals, no B or U."""
-    from ase.io import read, write
+def _expanded_sites(cif_path: str):
+    """The CIF expanded by ASE to its full P1 cell.
 
-    buf = io.BytesIO()
-    write(buf, read(cif_path), format="cif")
-    return buf.getvalue().decode("latin-1")
+    ASE applies the space-group symmetry and records, for every atom of the
+    cell, the listed site it came from (``spacegroup_kinds``). Each atom takes
+    that site's occupancy from ASE and that site's B from _listed_sites, since
+    ASE keeps occupancies but drops displacement parameters.
+
+    Returns (cell, elements, frac, occ, B_iso), as _listed_sites does.
+    """
+    from ase.io import read
+
+    atoms = read(cif_path)
+    with open(cif_path, encoding="utf-8", errors="replace") as fh:
+        B_site = _listed_sites(fh.read())[4]
+    kinds = atoms.arrays.get("spacegroup_kinds")
+    occ_site = atoms.info.get("occupancy", {})
+    elements = atoms.get_chemical_symbols()
+    occ, B_iso = [], []
+    for i, element in enumerate(elements):
+        site = int(kinds[i]) if kinds is not None else i
+        if site >= len(B_site):
+            raise ValueError(
+                f"ASE assigns atom {i} to site {site}, but the CIF lists "
+                f"{len(B_site)} sites"
+            )
+        occ.append(float(occ_site.get(str(site), {}).get(element, 1.0)))
+        B_iso.append(float(B_site[site]))
+    cell = tuple(float(v) for v in atoms.cell.cellpar())
+    return cell, elements, atoms.get_scaled_positions(), np.array(occ), np.array(B_iso)
 
 
 def _listed_sites(text: str):
@@ -106,9 +127,10 @@ class Crystal:
     """A crystal ready for structure-factor and reciprocal-space queries.
 
     Made by :meth:`from_cif`. The form factors are the Cromer-Mann X-ray
-    factors of single_crystal's table. With expand_symmetry=True (the default)
-    ASE expands the CIF to its full P1 cell, which carries no displacement
-    parameters, so B_iso is zero and no Debye-Waller factor is applied.
+    factors of single_crystal's table, and each atom's isotropic displacement
+    parameter B_iso enters its scattering as the Debye-Waller factor
+    exp(-B s^2). With expand_symmetry=True (the default) ASE expands the CIF to
+    its full P1 cell, and each atom keeps its site's occupancy and B.
 
     Attributes
     ----------
@@ -145,11 +167,10 @@ class Crystal:
         """Read a CIF. With expand_symmetry, ASE first expands it to the full
         P1 cell; without, its atom sites are used exactly as listed."""
         if expand_symmetry:
-            text = _p1_text(cif_path)
+            cell, elements, frac, occ, B_iso = _expanded_sites(cif_path)
         else:
             with open(cif_path, encoding="utf-8", errors="replace") as fh:
-                text = fh.read()
-        cell, elements, frac, occ, B_iso = _listed_sites(text)
+                cell, elements, frac, occ, B_iso = _listed_sites(fh.read())
         return cls(
             B=bmatrix(*cell),
             cell=dict(zip(_CELL, cell)),
@@ -176,7 +197,7 @@ class Crystal:
             s = np.linalg.norm(self.q_cryst(h), axis=1) / (4 * np.pi)
             w = scatter.factors("xray", kinds, s)[kind]  # (n_atoms, len(h))
             w *= self.occ[:, None]
-            if self.B_iso.any():  # all zero after the ASE expansion
+            if self.B_iso.any():  # skipped when no site gives a B
                 w *= np.exp(-np.outer(self.B_iso, s * s))
             phase = 2 * np.pi * (self.frac @ h.T)
             F_re = np.einsum("jm,jm->m", w, np.cos(phase))
