@@ -33,6 +33,14 @@ CASES = [
     ("PEA2PbBr4", [(0, 0, 1), (1, 1, 0), (0, 1, 2)]),
 ]
 
+# SAED zones and d min. Down [1 2 3] of PEA2PbBr4 the layers are 1/52 1/Angstrom
+# apart, closer than the relrod is long at 50 Angstrom, so layer -1 is excited
+# near the origin as well as layers 0 and 1.
+TEM_CASES = {
+    "CsPbBr3": [((0, 0, 1), 0.8)],
+    "PEA2PbBr4": [((0, 0, 1), 0.8), ((1, 2, 3), 1.0)],
+}
+
 
 def flat(a):
     return [float(v) for v in np.asarray(a).ravel()]
@@ -86,18 +94,19 @@ def main() -> int:
                         "intensity": flat(s.intensity),
                     })
 
-        t = sc.compute_tem(xtal, uvw=(0, 0, 1), kv=200, thickness=50,
-                           d_min=0.8, max_zone=1)
-        fixture["tem"].append({
-            "structure": name, "uvw": [0, 0, 1], "kv": 200, "thickness": 50,
-            "d_min": 0.8, "max_zone": 1, "count": len(t),
-            "wavelength": float(t.wavelength),
-            "zone_radii": [None if r is None else float(r) for r in t.zone_radii],
-            "hkl": [int(v) for v in t.hkl.ravel()],
-            "x": flat(t.x), "y": flat(t.y),
-            "s_g": flat(t.s_g), "intensity": flat(t.intensity),
-            "laue_zone": [int(v) for v in t.laue_zone],
-        })
+        for uvw, d_min in TEM_CASES[name]:
+            t = sc.compute_tem(xtal, uvw=uvw, kv=200, thickness=50,
+                               d_min=d_min, max_zone=1)
+            fixture["tem"].append({
+                "structure": name, "uvw": list(uvw), "kv": 200, "thickness": 50,
+                "d_min": d_min, "max_zone": 1, "count": len(t),
+                "wavelength": float(t.wavelength),
+                "zone_radii": [None if r is None else float(r) for r in t.zone_radii],
+                "hkl": [int(v) for v in t.hkl.ravel()],
+                "x": flat(t.x), "y": flat(t.y),
+                "s_g": flat(t.s_g), "intensity": flat(t.intensity),
+                "laue_zone": [int(v) for v in t.laue_zone],
+            })
 
         for radiation, wl, tt in (("xray", 1.5406, 70.0), ("neutron", 1.5406, 70.0)):
             p = sc.compute_powder(xtal, wavelength=wl, radiation=radiation,

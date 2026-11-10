@@ -203,6 +203,23 @@ for (const [name, doc] of Object.entries(fx.structures))
       dev = Math.abs(t.sg[i] / (-0.5 * g * g * t.wavelength) - 1);
     }
   report("SAED s_g of (100) is -g^2 lambda/2", dev, 1e-4);
+
+  // Down [1 2 3] of PEA2PbBr4 the layers are closer together than the relrod
+  // is long, so layer -1 is excited near the origin. The parity above covers
+  // it only if the fixture has some, so count them on both sides.
+  const c = fx.tem.find((p) => p.structure === "PEA2PbBr4" && `${p.uvw}` === "1,2,3");
+  const want = c ? c.laue_zone.filter((n) => n < 0).length : 0;
+  const below = c
+    ? computeTem(structures.PEA2PbBr4, {
+        uvw: c.uvw,
+        kv: c.kv,
+        thickness: c.thickness,
+        dMin: c.d_min,
+        maxZone: c.max_zone,
+      }).laueZone.filter((n) => n < 0).length
+    : 0;
+  report("SAED layer -1 down PEA2PbBr4 [1 2 3]", want > 0 && below === want ? 0 : 1, 0,
+         `${below} in JS, ${want} in the fixture`);
 }
 
 // --- 5. powder --------------------------------------------------------------

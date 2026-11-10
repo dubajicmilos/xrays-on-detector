@@ -63,7 +63,7 @@ class TEMPattern:
     d: np.ndarray
     intensity: np.ndarray  # |F|^2 times the relrod shape factor
     s_g: np.ndarray  # excitation error, 1/Angstrom with |g| = 1/d (no 2 pi)
-    laue_zone: np.ndarray  # 0 for ZOLZ, 1 for FOLZ, ...
+    laue_zone: np.ndarray  # 0 for ZOLZ, 1 for FOLZ, ...; negative below the ZOLZ
     uvw: np.ndarray
     g1: np.ndarray
     g2: np.ndarray
@@ -103,7 +103,9 @@ def compute_tem(
     thickness : specimen thickness in Angstrom, setting the relrod length.
     max_zone  : how many Laue zones above the zero layer to include. Zero by
                 default, which gives the zero-layer pattern an experiment
-                normally shows.
+                normally shows. Layers below the zero layer form no ring, but
+                any the relrod reaches are always included, with a negative
+                laue_zone.
     s_max     : excitation errors beyond this are dropped; defaults to the
                 first zero of the relrod, 1/thickness, which is where a
                 reflection stops contributing.
@@ -141,9 +143,16 @@ def compute_tem(
     G = np.array([[e1 @ e1, e1 @ e2], [e2 @ e1, e2 @ e2]])
     Ginv = np.linalg.inv(G)
 
+    # max_zone counts layers above the zero layer. The layers below never meet
+    # the sphere, which curves the other way, but the relrod can still reach
+    # them: every point of layer -n is at least n / |A uvw| from the sphere, in
+    # the units of s_g. Down a long zone axis that is less than s_max for
+    # n = 1, and layer -1 near the origin passes the same test as the zero
+    # layer. So every layer below that is within reach is scanned as well.
+    below = int(math.floor(s_max * np.linalg.norm(normal)))
     hkl_all = []
     candidates = 0
-    for layer in range(0, max_zone + 1):
+    for layer in range(-below, max_zone + 1):
         origin = B @ (layer * p).astype(float)
         o_in = origin - np.dot(origin, n_hat) * n_hat
         R = q_max + np.linalg.norm(o_in)

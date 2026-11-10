@@ -10,8 +10,9 @@ Checks:
      an independent CIF reader, an independent symmetry expansion and an
      independent form factor table (SKIPS if pymatgen is absent);
   D. neutrons: D and H differ in sign, and the sum uses it;
-  E. SAED: the higher-order Laue rings land where sqrt(2 k H n) says, and the
-     excitation error and the relrod are the textbook ones;
+  E. SAED: the higher-order Laue rings land where sqrt(2 k H n) says, the
+     excitation error and the relrod are the textbook ones, and every hkl the
+     relrod admits is there, below the zero layer too;
   F. powder: Bragg positions and cubic multiplicities;
   G. |F|^2 per reflection for neutrons and electrons against pymatgen's
      lengths and the Peng table (SKIPS without pymatgen, orjson and diffsims);
@@ -238,6 +239,26 @@ def test_tem():
     check("zero layer runs out to the first zero of the relrod",
           0.85 * edge < reach <= edge * (1 + 1e-9),
           f"{reach:.2f} of {edge:.2f} 1/Å at t = {t.thickness:g} Å")
+
+    # Down [1 2 3] of PEA2PbBr4 the layers are 1/52 1/Å apart, closer than 1/t
+    # at 50 Å, so the relrod reaches layer -1 near the origin. The pattern must
+    # hold every hkl a scan of the whole lattice admits, whatever max_zone says
+    # about the layers above.
+    x = load("PEA2PbBr4")
+    uvw = np.array([1, 2, 3])
+    n_hat = x.A @ uvw.astype(float)
+    n_hat /= np.linalg.norm(n_hat)
+    allh = x.hkl_within(1.0)
+    for max_zone in (0, 1):
+        t = sc.compute_tem(x, uvw=uvw, kv=200, thickness=50, d_min=1.0,
+                           max_zone=max_zone)
+        k = 2 * math.pi / t.wavelength
+        s_g = (k - np.linalg.norm(allh @ x.B.T - k * n_hat, axis=1)) / (2 * math.pi)
+        brute = allh[(np.abs(s_g) <= 1 / 50) & (allh @ uvw <= max_zone)]
+        below = int((t.laue_zone < 0).sum())
+        check(f"PEA2PbBr4 [1 2 3], max_zone {max_zone}: every hkl the relrod admits",
+              {tuple(h) for h in t.hkl} == {tuple(h) for h in brute} and below > 0,
+              f"{len(t)} vs {len(brute)}, {below} on layer -1")
 
 
 def test_powder():

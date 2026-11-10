@@ -92,10 +92,17 @@ export function computeTem(
   const n1 = norm(e1),
     n2 = norm(e2);
 
+  // maxZone counts layers above the zero layer. The layers below never meet
+  // the sphere, which curves the other way, but the relrod can still reach
+  // them: every point of layer -n is at least n / |A uvw| from the sphere, in
+  // the units of s_g. Down a long zone axis that is less than sCut for n = 1,
+  // and layer -1 near the origin passes the same test as the zero layer. So
+  // every layer below that is within reach is scanned as well.
+  const below = Math.floor(sCut * norm(normal));
   const seen = new Set();
   const hkl = [];
   let candidates = 0;
-  for (let layer = 0; layer <= maxZone; layer++) {
+  for (let layer = -below; layer <= maxZone; layer++) {
     const origin = matVec(
       B,
       p.map((v) => v * layer),
