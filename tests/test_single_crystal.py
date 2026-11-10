@@ -10,13 +10,17 @@ Checks:
      an independent CIF reader, an independent symmetry expansion and an
      independent form factor table (SKIPS if pymatgen is absent);
   D. neutrons: D and H differ in sign, and the sum uses it;
-  E. SAED: the higher-order Laue rings land where sqrt(2 k H n) says;
+  E. SAED: the higher-order Laue rings land where sqrt(2 k H n) says, and the
+     excitation error and the relrod are the textbook ones;
   F. powder: Bragg positions and cubic multiplicities;
   G. |F|^2 per reflection for neutrons and electrons against pymatgen's
      lengths and the Peng table (SKIPS without pymatgen, orjson and diffsims);
   H. section geometry: axes and coordinates for an oblique zone;
   I. symmetry expansion on sixteen space groups against pymatgen;
-  J. occupancy: |F|^2 goes as occ^2 and partial occupancies survive expansion.
+  J. occupancy: |F|^2 goes as occ^2 and partial occupancies survive expansion;
+  K. the CIF reader on files without type symbols and with rounded coordinates;
+  L. the X-ray table: f(0) = Z, and f(s) against Waasmaier-Kirfel (SKIPS the
+     second if xraydb is absent).
 
 C is the one that matters. The reason this package exists is that the earlier
 streamlit viewer summed only over the atoms literally listed in the CIF and
@@ -218,6 +222,22 @@ def test_tem():
     # The sign of the Ewald centre decides whether HOLZ exists at all.
     check("HOLZ reflections are excited on the far side of the zero layer",
           (t.laue_zone > 0).any())
+
+    # The relrod. s_g is the textbook excitation error, in a reciprocal space
+    # where |g| = 1/d: for a zero-layer reflection with the beam down the zone
+    # axis it is -g^2 lambda / 2, and the zero layer ends where sinc first
+    # vanishes, at |s_g| = 1/t. Both fail if s_g is left in 2 pi units, which
+    # makes the crystal behave as if it were 2 pi times thicker.
+    i = int(np.flatnonzero((t.hkl == [1, 0, 0]).all(axis=1))[0])
+    g = 1.0 / t.d[i]
+    check("excitation error of (100) is -g^2 lambda / 2",
+          abs(t.s_g[i] / (-0.5 * g * g * t.wavelength) - 1) < 1e-4,
+          f"{t.s_g[i]:.3e} 1/Å")
+    reach = np.hypot(t.x, t.y)[t.laue_zone == 0].max()
+    edge = math.sqrt(4 * math.pi * k / t.thickness)
+    check("zero layer runs out to the first zero of the relrod",
+          0.85 * edge < reach <= edge * (1 + 1e-9),
+          f"{reach:.2f} of {edge:.2f} 1/Å at t = {t.thickness:g} Å")
 
 
 def test_powder():
@@ -463,10 +483,90 @@ def test_occupancy():
     check("partial occupancies survive the P1 expansion", 0.5 in occs, f"{sorted(occs)}")
 
 
+_CELL = ("data_t\n_cell_length_a 5.2\n_cell_length_b 5.2\n_cell_length_c 7.1\n"
+         "_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 120\n")
+
+
+def test_cif_reader():
+    """Files less tidy than SHELXL's: no type symbols, coordinates to 3 decimals."""
+    print("== K: CIF reader, labels and rounded coordinates ==")
+
+    # Without _atom_site_type_symbol the element comes from the label, and a
+    # SHELX label ends in a letter that is not part of the symbol.
+    labels = {"C1A": "C", "N1A": "N", "H1E": "H", "O1S": "O", "Pb1": "Pb", "Br1A": "Br"}
+    rows = "\n".join(f"{lab} 0.{11 + 7 * i} 0.{23 + 5 * i} 0.{31 + 3 * i}"
+                     for i, lab in enumerate(labels))
+    doc = sc.parse_cif(_CELL + "_symmetry_space_group_name_H-M 'P 1'\nloop_\n"
+                       "_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n"
+                       "_atom_site_fract_z\n" + rows + "\n")
+    got = [a.element for a in doc.atoms]
+    check("labels with a suffix letter give the right element",
+          got == list(labels.values()),
+          " ".join(f"{lab}->{el}" for lab, el in zip(labels, got)))
+
+    # An atom on a threefold axis written to three decimals: its copies come
+    # out 0.001 apart, and all three used to be kept.
+    p3 = (_CELL + "_symmetry_space_group_name_H-M 'P 3'\nloop_\n"
+          "_symmetry_equiv_pos_as_xyz\n'x,y,z'\n'-y,x-y,z'\n'-x+y,-x,z'\nloop_\n"
+          "_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n"
+          "_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\n")
+
+    def copies(row):
+        return len(sc.parse_cif(p3 + row + "\n").atoms)
+
+    on_axis = {n: copies(f"Mg1 Mg {xy} 0.25 1") for n, xy in
+               ((5, "0.33333 0.66667"), (4, "0.3333 0.6667"), (3, "0.333 0.667"))}
+    check("an atom on a threefold axis is one atom at 5, 4 and 3 decimals",
+          set(on_axis.values()) == {1}, f"copies {on_axis}")
+    # Copies that really are apart must stay apart, or a split site loses atoms.
+    check("a site split about the axis keeps its three copies",
+          copies("O1 O 0.34000 0.66700 0.10000 0.3333") == 3)
+
+
+def test_xray_table():
+    """The Cromer-Mann table against its own sum rule and an outside fit."""
+    print("== L: X-ray form factor table ==")
+    table = scatter.xray_table()
+    order = ("H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co "
+             "Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te "
+             "I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir "
+             "Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf").split()
+    Z = {s: i + 1 for i, s in enumerate(order)}
+
+    def f(sym, s):
+        return float(scatter.factors("xray", [sym], s)[0])
+
+    # Forward scattering counts the electrons. A mistyped coefficient usually
+    # breaks this before anything else (the fits themselves land within 0.06).
+    dev, sym = max((abs(f(s, 0.0) - Z[s]), s) for s in table)
+    check("f(0) is the atomic number for every element", dev < 0.1,
+          f"worst {dev:.3f} e ({sym}), {len(table)} elements")
+
+    web = os.path.join(os.path.dirname(HERE), "web", "data", "scattering_factors.json")
+    if os.path.isfile(web):
+        with open(web, "rb") as a, open(os.path.join(scatter.DATA, "scattering_factors.json"), "rb") as b:
+            check("the browser reads the same table, byte for byte", a.read() == b.read())
+
+    # The shape, which the sum rule cannot see: two Gaussian widths exchanged
+    # leave f(0) alone and move f by an electron at s = 0.5. Waasmaier and
+    # Kirfel's fit is independent of this one and agrees with it to 0.13 e.
+    try:
+        import xraydb
+    except ImportError:
+        print("  SKIP  xraydb not installed (comparison with Waasmaier-Kirfel)")
+        return
+    grid = np.linspace(0.0, 2.0, 41)
+    dev, sym = max((float(np.abs([f(s, v) for v in grid] - np.asarray(xraydb.f0(s, grid))).max()), s)
+                   for s in table)
+    check("f(s) follows Waasmaier-Kirfel out to s = 2 for every element", dev < 0.2,
+          f"worst {dev:.3f} e ({sym})")
+
+
 if __name__ == "__main__":
     for fn in (test_lattice, test_sections, test_against_pymatgen, test_neutron,
                test_tem, test_powder, test_structure_factors_all_radiations,
-               test_section_geometry, test_symmetry_expansion, test_occupancy):
+               test_section_geometry, test_symmetry_expansion, test_occupancy,
+               test_cif_reader, test_xray_table):
         fn()
     print()
     if failures:

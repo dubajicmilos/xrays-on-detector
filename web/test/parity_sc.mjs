@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseCif, setElements } from "../js/cif.js";
 import { setTables } from "../js/scatter.js";
 import * as scatter from "../js/scatter.js";
 import * as display from "../sc/js/display.js";
@@ -35,6 +36,7 @@ setTables({
   neutron: read("..", "data", "neutron_lengths.json"),
   electron: read("..", "data", "electron_factors.json"),
 });
+setElements(Object.keys(read("..", "data", "scattering_factors.json")));
 
 let failures = 0;
 function report(name, worst, tol, extra = "") {
@@ -189,6 +191,18 @@ for (const [name, doc] of Object.entries(fx.structures))
   report("SAED wavelength and ring radii", worstR, 1e-11);
   report("SAED excitation error s_g", worstS, 1e-9);
   report("SAED intensity with relrod", worstI, 1e-11, `${total} reflections`);
+
+  // Parity cannot see a unit both sides get wrong, so s_g is also held to
+  // the textbook value: -g^2 lambda / 2 for a zero-layer reflection, with
+  // |g| = 1/d and no 2*pi.
+  const t = computeTem(structures.CsPbBr3, { uvw: [0, 0, 1], dMin: 0.8 });
+  let dev = Infinity;
+  for (let i = 0; i < t.count; i++)
+    if (t.hkl[3 * i] === 1 && !t.hkl[3 * i + 1] && !t.hkl[3 * i + 2]) {
+      const g = 1 / t.d[i];
+      dev = Math.abs(t.sg[i] / (-0.5 * g * g * t.wavelength) - 1);
+    }
+  report("SAED s_g of (100) is -g^2 lambda/2", dev, 1e-4);
 }
 
 // --- 5. powder --------------------------------------------------------------
@@ -242,6 +256,43 @@ for (const [name, doc] of Object.entries(fx.structures))
                   `expected ${JSON.stringify(c.text)}`);
     }
   report("hkl labels with overbars", bad, 0, `${fx.hkl_labels.length} cases`);
+}
+
+// --- 7. CIF reader ----------------------------------------------------------
+// Not parity: tests/test_single_crystal.py puts the Python reader through the
+// same cases. Files less tidy than SHELXL's, with no type symbols or with
+// coordinates given to three decimals.
+{
+  const cell =
+    "data_t\n_cell_length_a 5.2\n_cell_length_b 5.2\n_cell_length_c 7.1\n" +
+    "_cell_angle_alpha 90\n_cell_angle_beta 90\n_cell_angle_gamma 120\n";
+
+  const labels = { C1A: "C", N1A: "N", H1E: "H", O1S: "O", Pb1: "Pb", Br1A: "Br" };
+  const rows = Object.keys(labels)
+    .map((lab, i) => `${lab} 0.${11 + 7 * i} 0.${23 + 5 * i} 0.${31 + 3 * i}`)
+    .join("\n");
+  const doc = parseCif(
+    cell + "_symmetry_space_group_name_H-M 'P 1'\nloop_\n_atom_site_label\n" +
+      "_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n" + rows + "\n",
+  );
+  const got = doc.atoms.map((a) => a.element);
+  const wrong = Object.values(labels).filter((el, i) => got[i] !== el).length;
+  report("CIF labels with a suffix letter", wrong, 0,
+         Object.keys(labels).map((lab, i) => `${lab}->${got[i]}`).join(" "));
+
+  const p3 =
+    cell + "_symmetry_space_group_name_H-M 'P 3'\nloop_\n" +
+    "_symmetry_equiv_pos_as_xyz\n'x,y,z'\n'-y,x-y,z'\n'-x+y,-x,z'\nloop_\n" +
+    "_atom_site_label\n_atom_site_type_symbol\n_atom_site_fract_x\n" +
+    "_atom_site_fract_y\n_atom_site_fract_z\n_atom_site_occupancy\n";
+  const copies = (row) => parseCif(p3 + row + "\n").atoms.length;
+  const onAxis = ["0.33333 0.66667", "0.3333 0.6667", "0.333 0.667"].map(
+    (xy) => copies(`Mg1 Mg ${xy} 0.25 1`),
+  );
+  report("CIF atom on a threefold axis is one atom", Math.max(...onAxis) - 1, 0,
+         `copies at 5, 4, 3 decimals: ${onAxis.join(", ")}`);
+  report("CIF split site keeps its three copies",
+         Math.abs(copies("O1 O 0.34000 0.66700 0.10000 0.3333") - 3), 0);
 }
 
 console.log();
