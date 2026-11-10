@@ -267,9 +267,12 @@ def _element(type_symbol, label):
     for raw in (type_symbol, label):
         if not raw:
             continue
-        letters = re.sub(r"[^A-Za-z]", "", str(raw))
-        if not letters:
+        # The first run of letters only. Gathering every letter in the string
+        # read the label C1A as Ca, N1A as Na and H1E as He.
+        first = re.search(r"[A-Za-z]+", str(raw))
+        if not first:
             continue
+        letters = first.group(0)
         two = letters[:2]
         cap2 = two[0].upper() + two[1:].lower()
         cap1 = letters[0].upper()
@@ -457,7 +460,13 @@ def parse_cif(text: str, name: str = "uploaded") -> CifStructure:
     # Only copies of the same site merge. Two listed sites at one position, a
     # disordered C and N or two half-occupied Pb, are the two contributions
     # they physically are, and merging them would drop one's occupancy.
-    TOL = 1e-3
+    #
+    # The tolerance is what rounding can do. A file that gives a hexagonal 1/3
+    # as 0.333 puts each copy up to 0.0005 off in every coordinate, and two
+    # copies of that atom can then sit as far as 2.45e-3 apart (the worst pair
+    # of operations in 6/mmm; 1.73e-3 in m-3m). At 1e-3 such a site was kept
+    # three times over and scattered three times too strongly.
+    TOL = 2.5e-3
 
     def near(p, q):
         s2 = 0.0

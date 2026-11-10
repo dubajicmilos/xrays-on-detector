@@ -198,7 +198,9 @@ export function setElements(symbols) {
 function element(typeSymbol, label) {
   for (const raw of [typeSymbol, label]) {
     if (!raw) continue;
-    const letters = String(raw).replace(/[^A-Za-z]/g, "");
+    // The first run of letters only. Gathering every letter in the string
+    // read the label C1A as Ca, N1A as Na and H1E as He.
+    const letters = (String(raw).match(/[A-Za-z]+/) || [""])[0];
     if (!letters) continue;
     const two = letters.slice(0, 2);
     const cap2 = two.charAt(0).toUpperCase() + two.slice(1).toLowerCase();
@@ -386,7 +388,13 @@ export function parseCif(text, name = "uploaded") {
   // Only copies of the same site merge. Two listed sites at one position, a
   // disordered C and N or two half-occupied Pb, are the two contributions
   // they physically are, and merging them would drop one's occupancy.
-  const TOL = 1e-3;
+  //
+  // The tolerance is what rounding can do. A file that gives a hexagonal 1/3
+  // as 0.333 puts each copy up to 0.0005 off in every coordinate, and two
+  // copies of that atom can then sit as far as 2.45e-3 apart (the worst pair
+  // of operations in 6/mmm; 1.73e-3 in m-3m). At 1e-3 such a site was kept
+  // three times over and scattered three times too strongly.
+  const TOL = 2.5e-3;
   const near = (p, q) => {
     let s2 = 0;
     for (let i = 0; i < 3; i++) {
