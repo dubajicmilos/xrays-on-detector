@@ -25,8 +25,8 @@
   position: absolute;
   top: 10px;
   left: 14px;
-  /* stops short of the zoom control in the top-right corner */
-  right: 160px;
+  /* stops short of the zoom and rotation control in the top-right corner */
+  right: 290px;
   pointer-events: none;
   text-shadow: 0 1px 3px #000;
 }
@@ -109,6 +109,14 @@
 #hover:empty {
   display: none;
 }
+/* On the powder plot the readout follows the cursor instead: under the title
+   card it would cover the low-angle peaks it describes. app.js places it. */
+#hover.tip {
+  position: absolute;
+  margin-top: 0;
+  max-width: none;
+  z-index: 2;
+}
 
 #status {
   position: absolute;
@@ -164,6 +172,21 @@
   color: var(--dim);
   min-width: 42px;
   text-align: center;
+}
+#patZoom .sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 1px 3px;
+  background: var(--line2);
+}
+/* the rotation readout is a button, which puts the pattern back to 0° */
+#rotReset {
+  font:
+    10.5px Consolas,
+    ui-monospace,
+    monospace;
+  color: var(--dim);
+  min-width: 46px;
 }
 #patZoom.hidden {
   display: none;

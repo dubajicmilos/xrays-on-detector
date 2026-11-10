@@ -190,6 +190,21 @@
             <label>Spot size</label
             ><input type="range" id="spotSize" min="2" max="26" value="9" />
           </div>
+          <div class="row" id="rowRotate">
+            <label>Rotation</label
+            ><input type="number" id="rotation" step="1" value="0" />
+            <span class="u">° · step</span>
+            <select id="rotStep" class="sign">
+              <option value="1">1°</option>
+              <option value="5">5°</option>
+              <option value="10">10°</option>
+              <option value="15" selected>15°</option>
+              <option value="30">30°</option>
+              <option value="45">45°</option>
+              <option value="60">60°</option>
+              <option value="90">90°</option>
+            </select>
+          </div>
           <div class="row">
             <label>Label above</label
             ><input type="range" id="labelThr" min="0" max="100" value="35" />
@@ -213,7 +228,7 @@
           </div>
         </section>
 
-        <section class="grp" data-collapsed id="grpCompare">
+        <section class="grp" id="grpCompare">
           <h2>Compare two crystals</h2>
           <div class="row">
             <label>Second</label
@@ -225,6 +240,7 @@
             Pick or upload a second crystal to overlay its pattern on this one.
           </p>
           <div id="compareBody">
+          <div id="compareSpots">
           <div class="row" id="rowTwist">
             <label>Twist</label
             ><input
@@ -271,7 +287,8 @@
           </div>
           <button class="wide" id="findTwist">Find the best twist</button>
           <div class="readout" id="matchInfo"></div>
-          <div class="hint">
+          </div>
+          <div class="hint" id="compareHint">
             Both crystals are cut on the same zone axis, layer and d min. The
             twist rotates the second pattern about the zone axis, which is that
             crystal's orientation relative to the first, so it is the one
@@ -300,6 +317,10 @@
           <span id="zoomLabel">100%</span>
           <button id="zoomIn" title="zoom in">+</button>
           <button id="zoomFit" title="fit to pane">fit</button>
+          <span class="sep"></span>
+          <button id="rotLeft" title="rotate the pattern anticlockwise by the step set under Display">⟲</button>
+          <button id="rotReset" title="the pattern's rotation about the beam; click for 0°">0°</button>
+          <button id="rotRight" title="rotate the pattern clockwise by the step set under Display">⟳</button>
         </div>
         <div id="status"></div>
         <button id="panelToggle">☰</button>

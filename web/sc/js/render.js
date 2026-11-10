@@ -24,6 +24,8 @@ const ACCENT = "#6f9ee0";
 const GOOD = "#8fe3c0";
 const BG = "#090b12";
 const LABEL = "#c3cce0";
+// the second crystal, in the overlay and on the powder plot alike
+const SECOND = "#e2a06a";
 
 /**
  * The smallest stretched value whose colour stands out from the background:
@@ -75,7 +77,12 @@ export class PatternView {
     this.zoom = 1;
     this.panX = 0;
     this.panY = 0;
-    this.spots = null; // {x, y, r, i} in device pixels, for hit testing
+    this.spots = null; // {x, y, r, i, set} in device pixels, for hit testing
+    // In the overlay, which reflection of the other crystal each one is paired
+    // with: [A index -> {b, dq}, B index -> {a, dq}].
+    this.pairs = null;
+    this.powder = null; // the last powder plot's geometry, for hit testing
+    this._traces = new WeakMap(); // powder result -> {n, trace}
   }
 
   /** Fit the canvas backing store to its box, honouring devicePixelRatio. */
@@ -170,7 +177,9 @@ export class PatternView {
    * Draw a section or a SAED pattern.
    *
    * `structure` is needed only to turn the two zone basis vectors into screen
-   * directions for the axes key.
+   * directions for the axes key. `rotation` turns the whole pattern by that
+   * many degrees anticlockwise about the origin, which is the crystal turning
+   * about the zone axis; the axes key turns with it.
    */
   drawSpots(result, structure, opts) {
     const {
@@ -181,10 +190,13 @@ export class PatternView {
       labels = true,
       labelThreshold = 0.35,
       showRings = false,
+      rotation = 0,
     } = opts;
     const { w, h } = this.clear();
     const ctx = this.ctx;
     this.spots = null;
+    this.pairs = null;
+    this.powder = null;
 
     if (!result || result.count === 0) {
       this.message(
@@ -196,6 +208,11 @@ export class PatternView {
     }
 
     const value = stretch(result.intensity, { gain, log });
+    // Where each reflection is drawn: its plane coordinates, turned by the
+    // rotation when there is one. The fit below is made on the unturned
+    // pattern, so the pattern keeps its size as it is rotated; a d min cuts
+    // it to a disc, which fits the same way at any angle.
+    const xy = rotation ? rotateInPlane(result, rotation) : result;
     // Frame the spots that can be seen. A dark-ended colour map draws the
     // weakest ones near-black, and fitting to every spot above 1e-3 left a
     // large cell's visible pattern as a small cluster mid-pane.
@@ -255,7 +272,7 @@ export class PatternView {
     for (let i = 0; i < result.count; i++) {
       const v = value[i];
       if (v <= 1e-3) continue;
-      const [px, py] = this.toScreen(result.x[i], result.y[i]);
+      const [px, py] = this.toScreen(xy.x[i], xy.y[i]);
       const r = Math.min(spotRadius(v, spotScale) * dpr, cap);
       const R = 1.6 * r;
       if (px < -R || py < -R || px > w + R || py > h + R) continue;
@@ -269,7 +286,7 @@ export class PatternView {
       ctx.beginPath();
       ctx.arc(px, py, R, 0, 2 * Math.PI);
       ctx.fill();
-      spots.push({ x: px, y: py, r, i });
+      spots.push({ x: px, y: py, r, i, set: 0 });
     }
     ctx.globalCompositeOperation = "source-over";
 
@@ -294,7 +311,7 @@ export class PatternView {
     }
 
     this.spots = spots;
-    this._drawKey(result, structure, lim);
+    this._drawKey(result, structure, lim, rotation);
     return spots.length;
   }
 
@@ -434,14 +451,19 @@ export class PatternView {
     return shown;
   }
 
-  /** The two in-plane reciprocal directions and a scale bar. */
-  _drawKey(result, structure, lim) {
+  /**
+   * The two in-plane reciprocal directions and a scale bar. The directions
+   * are turned by `rotation` degrees, as the pattern is.
+   */
+  _drawKey(result, structure, lim, rotation = 0) {
     const ctx = this.ctx;
     const { width: w, height: h } = this.canvas;
     const dpr = this.dpr;
     const ox = 54 * dpr;
     const oy = h - 54 * dpr;
     const len = 30 * dpr;
+    const cr = Math.cos((rotation * Math.PI) / 180);
+    const sr = Math.sin((rotation * Math.PI) / 180);
 
     ctx.fillStyle = "rgba(9,11,18,0.72)";
     ctx.fillRect(ox - 44 * dpr, oy - 52 * dpr, 104 * dpr, 66 * dpr);
@@ -462,14 +484,16 @@ export class PatternView {
           structure.B[2][1] * g[1] +
           structure.B[2][2] * g[2],
       ];
-      const gx =
+      const ux =
         v[0] * result.xAxis[0] +
         v[1] * result.xAxis[1] +
         v[2] * result.xAxis[2];
-      const gy =
+      const uy =
         v[0] * result.yAxis[0] +
         v[1] * result.yAxis[1] +
         v[2] * result.yAxis[2];
+      const gx = cr * ux - sr * uy;
+      const gy = sr * ux + cr * uy;
       const n = Math.hypot(gx, gy);
       if (n < 1e-9) continue;
       const dx = (gx / n) * len;
@@ -525,18 +549,20 @@ export class PatternView {
   }
 
   /**
-   * Two sections in one frame: crystal A, and crystal B rotated by `twist`
-   * degrees about the zone axis.
+   * Two patterns in one frame, sections or SAED patterns: crystal A, and
+   * crystal B rotated by `twist` degrees about the zone axis.
    *
    * The rotation is applied to the in-plane coordinates only, which is exact
-   * for a section: the cut is perpendicular to the zone axis, so a rotation of
-   * the crystal about that axis is a rotation of the picture about its centre.
+   * for both: each is drawn in the plane normal to the zone axis, so a
+   * rotation of the crystal about that axis is a rotation of the picture
+   * about its centre. `rotation` turns the two together, on top of the twist.
    * Matched reflections are ringed in green when `showMatch` is set, so the
    * coincidences and the misfits can be told apart at a glance.
    */
   drawOverlay(resultA, resultB, opts = {}) {
     const {
       twist = 0,
+      rotation = 0,
       gain = 1,
       log = false,
       lut,
@@ -544,6 +570,7 @@ export class PatternView {
       labels = false,
       labelThreshold = 0.35,
       showMatch = true,
+      showRings = false,
       tol = 0.03,
       nameA = "crystal 1",
       nameB = "crystal 2",
@@ -556,15 +583,28 @@ export class PatternView {
     const { w, h } = this.clear();
     const ctx = this.ctx;
     this.spots = null;
+    this.pairs = null;
+    this.powder = null;
 
     if (!resultA || !resultA.count) {
       this.message("no reflections in the first crystal\nlower d min", "#f0a05a");
       return;
     }
-    const rotB = resultB && resultB.count ? rotateInPlane(resultB, twist) : null;
+    const hasB = !!(resultB && resultB.count);
+    // B against A, the twist alone, is what the pairing is about; both are
+    // drawn with the rotation on top.
+    const relB = hasB ? rotateInPlane(resultB, twist) : null;
+    const xyA = rotation ? rotateInPlane(resultA, rotation) : resultA;
+    const rotB = hasB
+      ? rotation
+        ? rotateInPlane(resultB, twist + rotation)
+        : relB
+      : null;
     const valueA = stretch(resultA.intensity, { gain, log });
     const valueB = rotB ? stretch(resultB.intensity, { gain, log }) : null;
 
+    // Fitted as the two sit against each other, before the common rotation,
+    // so the pair keeps its size as it is rotated (as in drawSpots).
     let lim = 0;
     for (let i = 0; i < resultA.count; i++)
       if (valueA[i] > 1e-3)
@@ -572,7 +612,7 @@ export class PatternView {
     if (rotB)
       for (let i = 0; i < resultB.count; i++)
         if (valueB[i] > 1e-3)
-          lim = Math.max(lim, Math.abs(rotB.x[i]), Math.abs(rotB.y[i]));
+          lim = Math.max(lim, Math.abs(relB.x[i]), Math.abs(relB.y[i]));
     if (lim <= 0) {
       this.message("every reflection in view is extinct\nraise the contrast", "#f0a05a");
       return;
@@ -583,17 +623,38 @@ export class PatternView {
     // Both crystals are flat colours, so every spot drawn is visible; the
     // legend stacked on the axes key is one more thing to keep clear of.
     const sets = [{ ...resultA, value: valueA }];
-    if (rotB) sets.push({ count: resultB.count, x: rotB.x, y: rotB.y, value: valueB });
+    if (rotB) sets.push({ count: resultB.count, x: relB.x, y: relB.y, value: valueB });
     this.scale = this._fitScale(sets, lim, spotScale, 1e-3, [
       ...(opts.avoid || []),
       [10, h / this.dpr - 174, 300, 60],
     ]);
 
-    const colourB = "#e2a06a";
+    const colourB = SECOND;
     const hits = rotB
-      ? pairUp(resultA, { count: resultB.count, x: rotB.x, y: rotB.y }, { tol })
+      ? pairUp(resultA, { count: resultB.count, x: relB.x, y: relB.y }, { tol })
       : null;
     const hitSet = hits ? new Set(hits.pairs.map((p) => p.a)) : null;
+    if (hits) {
+      const ab = new Map();
+      const ba = new Map();
+      for (const p of hits.pairs) {
+        ab.set(p.a, { b: p.b, dq: p.dq });
+        ba.set(p.b, { a: p.a, dq: p.dq });
+      }
+      this.pairs = [ab, ba];
+    }
+
+    if (showRings && resultA.zoneRadii) {
+      ctx.strokeStyle = "#243049";
+      ctx.lineWidth = 1 * this.dpr;
+      const [ox, oy] = this.toScreen(0, 0);
+      for (const r of resultA.zoneRadii) {
+        if (!r) continue;
+        ctx.beginPath();
+        ctx.arc(ox, oy, r * this.scale * this.zoom, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
 
     // Per-spot opacity, so the two modes can pick out what coincides and what
     // does not without a second pass over the reflections.
@@ -606,8 +667,9 @@ export class PatternView {
           : () => 0.85;
     const alphaB = () => (mode === "differences" ? 0.45 : 0.72);
 
+    // Every spot drawn, of either crystal, so a hover can name either one.
     const spots = [];
-    const paint = (xs, ys, value, colour, alpha, count) => {
+    const paint = (xs, ys, value, colour, alpha, count, set) => {
       ctx.fillStyle = colour;
       for (let i = 0; i < count; i++) {
         if (value[i] <= 1e-3) continue;
@@ -620,26 +682,20 @@ export class PatternView {
         ctx.beginPath();
         ctx.arc(px, py, r, 0, 2 * Math.PI);
         ctx.fill();
+        spots.push({ x: px, y: py, r, i, set });
       }
       ctx.globalAlpha = 1;
     };
 
     // Crystal 2 sits underneath so crystal 1 stays readable where they overlap.
-    if (rotB) paint(rotB.x, rotB.y, valueB, colourB, alphaB, resultB.count);
-    paint(resultA.x, resultA.y, valueA, ACCENT, alphaA, resultA.count);
-
-    for (let i = 0; i < resultA.count; i++) {
-      if (valueA[i] <= 1e-3) continue;
-      const [px, py] = this.toScreen(resultA.x[i], resultA.y[i]);
-      const r = spotRadius(valueA[i], spotScale) * this.dpr;
-      spots.push({ x: px, y: py, r, i });
-    }
+    if (rotB) paint(rotB.x, rotB.y, valueB, colourB, alphaB, resultB.count, 1);
+    paint(xyA.x, xyA.y, valueA, ACCENT, alphaA, resultA.count, 0);
 
     if (showMatch && hits && hits.pairs.length) {
       ctx.strokeStyle = GOOD;
       ctx.lineWidth = 1.6 * this.dpr;
       for (const p of hits.pairs) {
-        const [px, py] = this.toScreen(resultA.x[p.a], resultA.y[p.a]);
+        const [px, py] = this.toScreen(xyA.x[p.a], xyA.y[p.a]);
         const r = spotRadius(valueA[p.a], spotScale) * this.dpr + 5 * this.dpr;
         ctx.beginPath();
         ctx.arc(px, py, r, 0, 2 * Math.PI);
@@ -652,7 +708,7 @@ export class PatternView {
     if (labels) {
       const items = [];
       for (const s of spots) {
-        if (valueA[s.i] < labelThreshold) continue;
+        if (s.set !== 0 || valueA[s.i] < labelThreshold) continue;
         items.push({
           text: formatHkl([
             resultA.hkl[3 * s.i],
@@ -698,12 +754,21 @@ export class PatternView {
     });
 
     this.spots = spots;
-    this._drawKey(resultA, structure, lim);
+    this._drawKey(resultA, structure, lim, rotation);
     return spots.length;
   }
 
-  /** Nearest reflection to a client-space point, or null. */
+  /** Nearest reflection of the first crystal to a client-space point, or null. */
   pick(clientX, clientY) {
+    const hit = this.pickSpot(clientX, clientY, 0);
+    return hit ? hit.i : null;
+  }
+
+  /**
+   * Nearest spot to a client-space point as {set, i}, or null: set 0 is the
+   * first crystal and 1 the second, in the overlay. `only` keeps one set.
+   */
+  pickSpot(clientX, clientY, only = null) {
     if (!this.spots) return null;
     const box = this.canvas.getBoundingClientRect();
     const x = (clientX - box.left) * this.dpr;
@@ -711,15 +776,16 @@ export class PatternView {
     let best = null;
     let bestD = 14 * this.dpr;
     for (const s of this.spots) {
+      if (only !== null && s.set !== only) continue;
       const d = Math.hypot(s.x - x, s.y - y);
       if (d < Math.max(s.r, bestD)) {
         if (d < bestD || best === null) {
           bestD = Math.max(d, 4);
-          best = s.i;
+          best = s;
         }
       }
     }
-    return best;
+    return best ? { set: best.set, i: best.i } : null;
   }
 
   /**
@@ -728,13 +794,28 @@ export class PatternView {
    * `avoid` holds the page's overlays as [x, y, w, h] in CSS pixels, as for
    * the spot views; the plot starts under whichever of them sit in its top
    * half (the title card), so the card no longer covers the axis.
+   *
+   * `second` is a second crystal's powder result over the same 2θ range. Its
+   * trace is drawn under the first in its own colour, with its own row of
+   * reflection ticks, as the phases of a multi-phase Rietveld plot are.
+   * `hover` ({set, i}) picks out one peak: its own profile, a line down to its
+   * tick, and the tick itself.
    */
   drawPowder(p, opts) {
-    const { labels = true, labelThreshold = 5, avoid = [] } = opts;
+    const {
+      labels = true,
+      labelThreshold = 5,
+      avoid = [],
+      second = null,
+      nameA = "",
+      nameB = "",
+      hover = null,
+    } = opts;
     const { w, h } = this.clear();
     const ctx = this.ctx;
     const dpr = this.dpr;
     this.spots = null;
+    this.pairs = null;
 
     let top = 22;
     for (const [, y, , bh] of avoid)
@@ -747,9 +828,9 @@ export class PatternView {
     const plotW = w - padL - padR;
     const plotH = h - padT - padB;
     const ttMax = p.x[p.x.length - 1];
-    // The axis runs a little below zero, to hold the reflection ticks under
-    // the trace's baseline.
-    const yMin = -9;
+    // The axis runs a little below zero, to hold a row of reflection ticks
+    // under the trace's baseline for each crystal.
+    const yMin = second ? -16 : -9;
     const yMax = 108;
     const X = (tt) => padL + (tt / ttMax) * plotW;
     const Y = (v) => padT + plotH * (1 - (v - yMin) / (yMax - yMin));
@@ -790,56 +871,140 @@ export class PatternView {
 
     // Sampled at twelve points a peak width, so every apex is on the trace:
     // at the result's own 2000 points a narrow peak's top fell between two
-    // samples and was drawn up to a tenth low, under its own label.
-    const n = Math.min(
-      40000,
-      Math.max(p.x.length, Math.ceil((12 * ttMax) / p.fwhm) + 1),
+    // samples and was drawn up to a tenth low, under its own label. Kept per
+    // result, so a hover redraws without summing every peak again.
+    const traceOf = (r) => {
+      let got = this._traces.get(r);
+      if (!got) {
+        const n = Math.min(
+          40000,
+          Math.max(r.x.length, Math.ceil((12 * ttMax) / r.fwhm) + 1),
+        );
+        got = {
+          n,
+          trace: powderProfile(r.twoTheta, r.intensity, ttMax, r.fwhm, n),
+        };
+        this._traces.set(r, got);
+      }
+      return got;
+    };
+    const drawTrace = ({ n, trace }, stroke, fillTop, fillBottom) => {
+      ctx.beginPath();
+      ctx.moveTo(X(trace.x[0]), Y(trace.y[0]));
+      for (let i = 1; i < n; i++) ctx.lineTo(X(trace.x[i]), Y(trace.y[i]));
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.3 * dpr;
+      ctx.stroke();
+      ctx.lineTo(X(ttMax), Y(0));
+      ctx.lineTo(X(0), Y(0));
+      ctx.closePath();
+      const fill = ctx.createLinearGradient(0, Y(100), 0, Y(0));
+      fill.addColorStop(0, fillTop);
+      fill.addColorStop(1, fillBottom);
+      ctx.fillStyle = fill;
+      ctx.fill();
+    };
+    const sets = second ? [p, second] : [p];
+    const traces = sets.map(traceOf);
+    // The second crystal underneath, so the first stays readable where the
+    // two traces cross.
+    if (second)
+      drawTrace(
+        traces[1],
+        SECOND,
+        "rgba(226,160,106,0.22)",
+        "rgba(226,160,106,0.03)",
+      );
+    drawTrace(
+      traces[0],
+      ACCENT,
+      "rgba(111,158,224,0.32)",
+      "rgba(111,158,224,0.04)",
     );
-    const trace = powderProfile(p.twoTheta, p.intensity, ttMax, p.fwhm, n);
-    ctx.beginPath();
-    ctx.moveTo(X(trace.x[0]), Y(trace.y[0]));
-    for (let i = 1; i < n; i++) ctx.lineTo(X(trace.x[i]), Y(trace.y[i]));
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = 1.3 * dpr;
-    ctx.stroke();
-    ctx.lineTo(X(ttMax), Y(0));
-    ctx.lineTo(X(0), Y(0));
-    ctx.closePath();
-    const fill = ctx.createLinearGradient(0, Y(100), 0, Y(0));
-    fill.addColorStop(0, "rgba(111,158,224,0.32)");
-    fill.addColorStop(1, "rgba(111,158,224,0.04)");
-    ctx.fillStyle = fill;
-    ctx.fill();
 
-    // Where every reflection falls, as the row of ticks under a Rietveld plot.
-    ctx.strokeStyle = "rgba(143,227,192,0.75)";
-    ctx.lineWidth = 1 * dpr;
-    ctx.beginPath();
-    for (let i = 0; i < p.count; i++) {
-      const x = X(p.twoTheta[i]);
-      ctx.moveTo(x, Y(-2));
-      ctx.lineTo(x, Y(-7));
+    // The drawn apex near a 2θ, which a close neighbour can lift above the
+    // peak's own height.
+    const apex = ({ n, trace }, tt) => {
+      const j = Math.round(tt / (ttMax / (n - 1)));
+      let v = 0;
+      for (let k = Math.max(0, j - 2); k <= Math.min(n - 1, j + 2); k++)
+        v = Math.max(v, trace.y[k]);
+      return v;
+    };
+
+    // Where every reflection falls, as the row of ticks under a Rietveld plot:
+    // one row per crystal, in its trace's colour when there are two. A peak
+    // made only of extinct reflections is not a reflection and gets no tick.
+    const rows = second
+      ? [
+          [-2, -7, "rgba(111,158,224,0.9)"],
+          [-9, -14, "rgba(226,160,106,0.9)"],
+        ]
+      : [[-2, -7, "rgba(143,227,192,0.75)"]];
+    sets.forEach((r, s) => {
+      const [a, b, colour] = rows[s];
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      for (let i = 0; i < r.count; i++) {
+        if (r.absent && r.absent[i]) continue;
+        const x = X(r.twoTheta[i]);
+        ctx.moveTo(x, Y(a));
+        ctx.lineTo(x, Y(b));
+      }
+      ctx.stroke();
+    });
+
+    if (hover && sets[hover.set] && hover.i < sets[hover.set].count) {
+      const r = sets[hover.set];
+      const tt = r.twoTheta[hover.i];
+      const I = r.intensity[hover.i];
+      const sigma = r.fwhm / (2 * Math.sqrt(2 * Math.LN2));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padL, padT, plotW, plotH);
+      ctx.clip();
+      // the peak's own profile, under the summed trace
+      const m = 64;
+      ctx.beginPath();
+      ctx.moveTo(X(tt - 4 * sigma), Y(0));
+      for (let k = 0; k <= m; k++) {
+        const t = tt - 4 * sigma + (8 * sigma * k) / m;
+        ctx.lineTo(X(t), Y(I * Math.exp(-0.5 * ((t - tt) / sigma) ** 2)));
+      }
+      ctx.lineTo(X(tt + 4 * sigma), Y(0));
+      ctx.closePath();
+      ctx.fillStyle = "rgba(143,227,192,0.28)";
+      ctx.fill();
+      ctx.strokeStyle = GOOD;
+      ctx.lineWidth = 1.2 * dpr;
+      ctx.stroke();
+      // a line from its tick up to the top of the trace there
+      const [a, b] = rows[hover.set];
+      ctx.setLineDash([3 * dpr, 3 * dpr]);
+      ctx.beginPath();
+      ctx.moveTo(X(tt), Y(b));
+      ctx.lineTo(X(tt), Y(Math.max(I, apex(traces[hover.set], tt))));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // and the tick itself, brighter and wider than its neighbours
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2.2 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(X(tt), Y(a));
+      ctx.lineTo(X(tt), Y(b));
+      ctx.stroke();
+      ctx.restore();
     }
-    ctx.stroke();
 
     if (labels) {
-      // on the drawn apex, which a close neighbour can lift above the peak's
-      // own height
-      const dx = ttMax / (n - 1);
-      const apex = (tt) => {
-        const j = Math.round(tt / dx);
-        let v = 0;
-        for (let k = Math.max(0, j - 2); k <= Math.min(n - 1, j + 2); k++)
-          v = Math.max(v, trace.y[k]);
-        return v;
-      };
       const items = [];
       for (let i = 0; i < p.count; i++) {
         if (p.intensity[i] < labelThreshold) continue;
         items.push({
           text: formatHkl(p.hkl[i]),
           x: X(p.twoTheta[i]),
-          y: Y(apex(p.twoTheta[i])) - 3 * dpr,
+          y: Y(apex(traces[0], p.twoTheta[i])) - 3 * dpr,
           rank: p.intensity[i],
         });
       }
@@ -852,5 +1017,121 @@ export class PatternView {
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("2θ  (degrees)", padL + plotW / 2, padT + plotH + 24 * dpr);
+
+    // Which trace is which crystal, on the canvas so an exported PNG still
+    // says so: in the margin above the plot, right-aligned, unless the title
+    // card reaches across to it, and then just inside the plot's corner.
+    if (second) {
+      const key = [
+        [ACCENT, nameA],
+        [SECOND, nameB],
+      ];
+      ctx.font = `${10.5 * dpr}px Consolas, ui-monospace, monospace`;
+      const boxW =
+        Math.max(...key.map(([, text]) => ctx.measureText(text).width)) +
+        40 * dpr;
+      const boxH = (12 + key.length * 16) * dpr;
+      let bx = padL + plotW - boxW;
+      let by = 10 * dpr;
+      const covered = avoid.some(
+        ([ax, ay, aw, ah]) =>
+          ax * dpr < bx + boxW &&
+          (ax + aw) * dpr > bx &&
+          ay * dpr < by + boxH &&
+          (ay + ah) * dpr > by,
+      );
+      if (covered || by + boxH > padT - 4 * dpr) {
+        bx -= 8 * dpr;
+        by = padT + 8 * dpr;
+      }
+      ctx.fillStyle = "rgba(9,11,18,0.78)";
+      ctx.fillRect(bx, by, boxW, boxH);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      key.forEach(([colour, text], row) => {
+        const ly = by + (14 + row * 16) * dpr;
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = 2 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(bx + 8 * dpr, ly);
+        ctx.lineTo(bx + 24 * dpr, ly);
+        ctx.stroke();
+        ctx.fillStyle = DIM;
+        ctx.fillText(text, bx + 30 * dpr, ly);
+      });
+    }
+
+    this.powder = {
+      padL,
+      padT,
+      plotW,
+      plotH,
+      ttMax,
+      sets,
+      rows: rows.map(([a, b]) => [Y(a), Y(b)]),
+    };
+  }
+
+  /**
+   * The powder peak under a client-space point: {set, i} for a peak, {tt}
+   * with the 2θ under the cursor when no peak is near, or null off the plot.
+   *
+   * Over a row of reflection ticks the nearest tick in that row is taken, so
+   * every reflection can be reached, however weak. Over the trace it is the
+   * peak whose own profile is highest at the cursor, which is the peak the
+   * cursor is on rather than merely the nearest centre: on the flank of a
+   * strong peak that is the strong one, and a weak peak standing apart is
+   * still found where it is drawn.
+   */
+  pickPowder(clientX, clientY) {
+    const g = this.powder;
+    if (!g) return null;
+    const box = this.canvas.getBoundingClientRect();
+    const x = (clientX - box.left) * this.dpr;
+    const y = (clientY - box.top) * this.dpr;
+    if (
+      x < g.padL ||
+      x > g.padL + g.plotW ||
+      y < g.padT ||
+      y > g.padT + g.plotH
+    )
+      return null;
+    const perDeg = g.plotW / g.ttMax;
+    const tt = (x - g.padL) / perDeg;
+    const slack = 3 * this.dpr;
+    for (let s = 0; s < g.sets.length; s++) {
+      const [y0, y1] = g.rows[s];
+      if (y < y0 - slack || y > y1 + slack) continue;
+      const r = g.sets[s];
+      let best = -1;
+      let bestD = 6 * this.dpr;
+      for (let i = 0; i < r.count; i++) {
+        if (r.absent && r.absent[i]) continue;
+        const d = Math.abs(r.twoTheta[i] - tt) * perDeg;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      }
+      return best >= 0 ? { set: s, i: best } : { tt };
+    }
+    let best = null;
+    let bestV = 0;
+    for (let s = 0; s < g.sets.length; s++) {
+      const r = g.sets[s];
+      const sigma = r.fwhm / (2 * Math.sqrt(2 * Math.LN2));
+      const reach = Math.max(2 * sigma, (6 * this.dpr) / perDeg);
+      for (let i = 0; i < r.count; i++) {
+        if (r.absent && r.absent[i]) continue;
+        const dt = r.twoTheta[i] - tt;
+        if (Math.abs(dt) > reach) continue;
+        const v = r.intensity[i] * Math.exp(-0.5 * (dt / sigma) ** 2);
+        if (best === null || v > bestV) {
+          best = { set: s, i };
+          bestV = v;
+        }
+      }
+    }
+    return best || { tt };
   }
 }

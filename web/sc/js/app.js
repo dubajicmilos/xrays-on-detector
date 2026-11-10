@@ -20,7 +20,7 @@ import {
 } from "../../js/scatter.js";
 import { formatHkl } from "./display.js";
 import { describeComparison, pairUp, rotateInPlane, bestTwist } from "./overlay.js";
-import { computePowder } from "./powder.js";
+import { computePowder, peakFamilies } from "./powder.js";
 import { PatternView } from "./render.js";
 import { computeSection, zoneLaw } from "./section.js";
 import { Structure } from "./structure.js";
@@ -59,6 +59,11 @@ const st = {
   labelThr: 0.35,
   spotSize: 9,
   colormap: "inferno",
+  // The pattern's rotation about the beam, degrees anticlockwise, and the step
+  // the rotate buttons turn it by. A section or a SAED pattern only: a powder
+  // trace has no orientation to turn.
+  rotation: 0,
+  rotStep: 15,
   // Two-crystal comparison: a second structure, the angle its pattern is
   // rotated by about the zone axis, and whether coincidences are ringed.
   twist: 0,
@@ -80,45 +85,67 @@ let result = null;
 let view = null;
 let second = null;
 let result2 = null;
+/** The powder peak under the cursor, {set, i}, so the plot can pick it out. */
+let hoverPeak = null;
+/** The overlay boxes the last full draw fitted around, for hover redraws. */
+let lastAvoid = [];
 
 // --------------------------------------------------------------- compute
+
+/**
+ * The wavelength in force, in Angstrom: the beam's for SAED, the voltage's
+ * for electrons, the wavelength box's otherwise. A section is drawn without
+ * one, so for a section this is the wavelength its 2θ readout is quoted at.
+ */
+function wavelengthNow() {
+  return st.mode === "saed" || st.radiation === "electron"
+    ? electronWavelength(st.kv)
+    : st.wavelength;
+}
+
+/**
+ * The current pattern of one structure. Both crystals go through here, so
+ * the second is always computed with exactly the settings of the first.
+ */
+function computeFor(s) {
+  if (st.mode === "section")
+    return computeSection(s, {
+      uvw: st.uvw,
+      layer: st.layer,
+      dMin: st.dMin,
+      radiation: st.radiation,
+    });
+  if (st.mode === "saed")
+    return computeTem(s, {
+      uvw: st.uvw,
+      kv: st.kv,
+      thickness: st.thickness,
+      dMin: st.dMin,
+      maxZone: st.zones,
+    });
+  return computePowder(s, {
+    wavelength: wavelengthNow(),
+    radiation: st.radiation,
+    twoThetaMax: st.ttMax,
+    twoThetaTol: st.mergeTol,
+    fwhm: st.fwhm,
+  });
+}
 
 function recompute() {
   if (!structure) return;
   const status = $("status");
   status.className = "";
   try {
+    result = computeFor(structure);
     if (st.mode === "section") {
-      result = computeSection(structure, {
-        uvw: st.uvw,
-        layer: st.layer,
-        dMin: st.dMin,
-        radiation: st.radiation,
-      });
       $("zoneLaw").textContent = zoneLaw(result.uvw, result.layer);
     } else if (st.mode === "saed") {
-      result = computeTem(structure, {
-        uvw: st.uvw,
-        kv: st.kv,
-        thickness: st.thickness,
-        dMin: st.dMin,
-        maxZone: st.zones,
-      });
       $("zoneLaw").textContent = "";
       $("zoneRings").textContent = result.zoneRadii
         .slice(1)
         .map((r) => (r ? r.toFixed(1) : "—"))
         .join(" ");
-    } else {
-      const lam =
-        st.radiation === "electron" ? electronWavelength(st.kv) : st.wavelength;
-      result = computePowder(structure, {
-        wavelength: lam,
-        radiation: st.radiation,
-        twoThetaMax: st.ttMax,
-        twoThetaTol: st.mergeTol,
-        fwhm: st.fwhm,
-      });
     }
   } catch (err) {
     result = null;
@@ -137,31 +164,31 @@ function recompute() {
 }
 
 /**
- * The second crystal's section, when one is loaded.
+ * The second crystal's pattern, when one is loaded.
  *
- * It is cut with the same zone axis, layer, d min and radiation as the first,
- * so the two patterns are directly comparable: any difference on screen is the
+ * It is computed with every setting of the first (zone axis, layer, d min,
+ * radiation, wavelength, voltage, thickness, 2θ range, peak width), so the
+ * two patterns are directly comparable: any difference on screen is the
  * structure, not the settings.
  */
 function recomputeSecond() {
-  if (!second || st.mode !== "section") {
+  hoverPeak = null;
+  secondError = null;
+  if (!second) {
     result2 = null;
     return;
   }
   try {
-    result2 = computeSection(second, {
-      uvw: st.uvw,
-      layer: st.layer,
-      dMin: st.dMin,
-      radiation: st.radiation,
-    });
+    result2 = computeFor(second);
   } catch (err) {
     result2 = null;
-    const status = $("status");
-    status.className = "bad";
-    status.textContent = `second crystal: ${err.message}`;
+    // shown by draw(), after the status line it would otherwise be lost under
+    secondError = err.message;
   }
 }
+
+/** Why the second crystal has no pattern, when it has none. */
+let secondError = null;
 
 /** The message on the canvas when there is no result, redrawn on resize. */
 let lastError = null;
@@ -188,18 +215,21 @@ function draw() {
   const lut = luts[st.colormap];
   // The title first: the pattern is fitted around the card it fills.
   writeOverlay();
+  if (secondError) {
+    $("status").className = "bad";
+    $("status").textContent = `second crystal: ${secondError}`;
+  }
   const avoid = overlayBoxes();
+  lastAvoid = avoid;
   if (st.mode === "powder") {
-    view.drawPowder(result, {
-      labels: st.labels,
-      labelThreshold: Math.max(st.labelThr * 100, 1),
-      avoid,
-    });
+    drawPowder();
   } else if (second && result2) {
     // Two crystals in one frame. The second is drawn rotated by st.twist about
-    // the zone axis, which for a section is exactly a rotation of the picture.
+    // the zone axis, which for a section or a zone-axis pattern is exactly a
+    // rotation of the picture; st.rotation turns the two together.
     view.drawOverlay(result, result2, {
       twist: st.twist,
+      rotation: st.rotation,
       gain: st.gain,
       log: st.log,
       lut,
@@ -207,6 +237,7 @@ function draw() {
       labels: st.labels,
       labelThreshold: st.labelThr,
       showMatch: st.showMatch,
+      showRings: st.rings && st.mode === "saed",
       tol: st.matchTol,
       mode: st.compareMode,
       structure,
@@ -223,10 +254,29 @@ function draw() {
       labels: st.labels,
       labelThreshold: st.labelThr,
       showRings: st.rings && st.mode === "saed",
+      rotation: st.rotation,
       avoid,
     });
   }
   writeMatchInfo();
+}
+
+/**
+ * The powder plot alone, with the second crystal when there is one and the
+ * hovered peak picked out. A hover redraws only this: the title and the
+ * fit around it have not changed.
+ */
+function drawPowder() {
+  const two = !!(second && result2);
+  view.drawPowder(result, {
+    labels: st.labels,
+    labelThreshold: Math.max(st.labelThr * 100, 1),
+    avoid: lastAvoid,
+    second: two ? result2 : null,
+    nameA: structure.name,
+    nameB: two ? second.name : "",
+    hover: hoverPeak,
+  });
 }
 
 /**
@@ -271,7 +321,8 @@ function writeOverlay() {
     status.textContent =
       `Lorentz ${st.radiation === "xray" ? "and polarisation " : ""}applied` +
       `   ·   intensities relative to the strongest peak` +
-      (st.radiation === "xray" ? "" : "   ·   no polarisation term");
+      (st.radiation === "xray" ? "" : "   ·   no polarisation term") +
+      "   ·   hover a peak for its reflections";
     return;
   }
 
@@ -290,7 +341,7 @@ function writeOverlay() {
       );
     status.textContent =
       bits.join("   ·   ") ||
-      "hover a spot for its indices   ·   wheel to zoom, drag to pan, " +
+      "hover a spot for its indices and 2θ   ·   wheel to zoom, drag to pan, " +
         "double-click to fit";
   } else {
     setTitle(structure.name, "electron", [
@@ -331,7 +382,8 @@ function writeOverlay() {
 function writeMatchInfo() {
   const info = $("matchInfo");
   if (!info) return;
-  if (!second || !result2) {
+  // The pairing is by position in the plane, which a powder trace does not have.
+  if (!second || !result2 || st.mode === "powder") {
     info.textContent = "";
     return;
   }
@@ -440,6 +492,7 @@ async function onSecondFile(file) {
     $("structure2").value = idx;
     st.secondIndex = structures.length - 1;
     second = new Structure(doc);
+    openCompare();
     syncRows();
     recompute();
   } catch (err) {
@@ -450,6 +503,13 @@ async function onSecondFile(file) {
     $("status").className = "bad";
     $("status").textContent = msg;
   }
+}
+
+/** Unfold the comparison block, if it was folded, once a second crystal is in. */
+function openCompare() {
+  const grp = $("grpCompare");
+  if (grp.classList.contains("collapsed"))
+    grp.querySelector(".grp-toggle")?.click();
 }
 
 // ------------------------------------------------------------------ export
@@ -481,7 +541,7 @@ function download(name, blob) {
  * differs (a neutron and an X-ray pattern, say).
  */
 function saveMatches() {
-  if (!result || !second || !result2) return;
+  if (!result || !second || !result2 || st.mode === "powder") return;
   const rot = rotateInPlane(result2, st.twist);
   const { pairs, onlyA, onlyB } = pairUp(
     result,
@@ -498,7 +558,10 @@ function saveMatches() {
 
   const L = [
     `# ${structure.name}  vs  ${second.name}`,
-    `# zone [${st.uvw.join(" ")}]   layer ${st.layer}   d min ${st.dMin} A`,
+    st.mode === "saed"
+      ? `# SAED, beam || [${result.uvw.join(" ")}]   ${result.kv} kV   ` +
+        `thickness ${result.thickness} A   d min ${st.dMin} A`
+      : `# zone [${st.uvw.join(" ")}]   layer ${st.layer}   d min ${st.dMin} A`,
     `# twist ${st.twist.toFixed(2)} deg   match tolerance ${st.matchTol} 1/A`,
     `# ${pairs.length} coincident, ${onlyA.length} only in ${structure.name}, ` +
       `${onlyB.length} only in ${second.name}`,
@@ -584,10 +647,279 @@ function saveTable() {
   );
 }
 
+// ---------------------------------------------------------- hover readouts
+
+const isElectron = () => st.mode === "saed" || st.radiation === "electron";
+
+/**
+ * A scattering angle, in the units its radiation is read in: degrees for
+ * x-rays and neutrons, and for electrons, whose angles are a few degrees at
+ * most, milliradians as well.
+ */
+function angleText(twoThetaDeg) {
+  if (!isElectron()) return `2θ ${twoThetaDeg.toFixed(3)}°`;
+  const mrad = (twoThetaDeg * Math.PI * 1000) / 180;
+  return `2θ ${twoThetaDeg.toFixed(4)}° = ${mrad.toFixed(2)} mrad`;
+}
+
+/**
+ * Where a reflection of spacing d diffracts, by Bragg's law, at the
+ * wavelength in force. A section has no wavelength of its own, so the line
+ * says which one the angle is for; SAED's is in the title already.
+ */
+function twoThetaLine(d) {
+  const lam = wavelengthNow();
+  const at =
+    st.mode === "saed"
+      ? ""
+      : isElectron()
+        ? `   at ${st.kv} kV`
+        : `   at λ ${+lam.toFixed(5)} Å`;
+  const s = lam / (2 * d);
+  if (!(s <= 1)) return `no 2θ: d is under λ/2 = ${(lam / 2).toFixed(4)} Å${at}`;
+  return angleText((2 * Math.asin(s) * 180) / Math.PI) + at;
+}
+
+/** A modulus |F|, with the decimals its size calls for. */
+function fmtF(v) {
+  if (v >= 100) return v.toFixed(1);
+  if (v >= 1) return v.toFixed(2);
+  return v.toPrecision(3);
+}
+
+/** A share of the strongest reflection, as a percentage. */
+function pct(x) {
+  const v = 100 * x;
+  return v >= 0.01 ? `${v.toFixed(2)}%` : `${v.toExponential(1)}%`;
+}
+
+/** Pad an hkl string to a width, not counting its combining overbars. */
+const padHkl = (text, n) =>
+  text + " ".repeat(Math.max(0, n - text.replace(/̅/g, "").length));
+
+/**
+ * The readout for one spot of a section or SAED pattern: its indices, d, |Q|
+ * and 2θ, its intensity against the strongest reflection, and, in the
+ * overlay, which crystal it belongs to and the reflection of the other one
+ * it coincides with.
+ */
+function spotText({ set, i }) {
+  const res = set ? result2 : result;
+  const own = set ? second : structure;
+  if (!res || !own || i >= res.count) return "";
+  const hkl = [res.hkl[3 * i], res.hkl[3 * i + 1], res.hkl[3 * i + 2]];
+  const unit = UNITS[res.radiation || st.radiation];
+  let top = 0;
+  for (let k = 0; k < res.count; k++)
+    if (res.intensity[k] > top) top = res.intensity[k];
+  const lines = [];
+  if (second && result2) lines.push(own.name);
+  lines.push(`${formatHkl(hkl)}   (${hkl.join(" ")})`);
+  lines.push(`d ${res.d[i].toFixed(4)} Å   |Q| ${res.q[i].toFixed(4)} Å⁻¹`);
+  lines.push(twoThetaLine(res.d[i]));
+  lines.push(
+    `|F|² ${res.intensity[i].toExponential(3)} ${unit}²` +
+      (top > 0 ? `   ${pct(res.intensity[i] / top)} of the strongest` : ""),
+  );
+  if (st.mode === "saed")
+    lines.push(`s_g ${res.sg[i].toFixed(5)} Å⁻¹   Laue zone ${res.laueZone[i]}`);
+  const pair = view.pairs && view.pairs[set].get(i);
+  if (pair) {
+    const other = set ? result : result2;
+    const j = set ? pair.a : pair.b;
+    const oh = [other.hkl[3 * j], other.hkl[3 * j + 1], other.hkl[3 * j + 2]];
+    lines.push(
+      `coincides with ${(set ? structure : second).name} ${formatHkl(oh)}` +
+        `, Δq ${pair.dq.toFixed(4)} Å⁻¹`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The readout for one powder peak, with what a reflection list gives for it:
+ * indices and multiplicity, 2θ, d and |Q|, the intensity on the plot's 0-100
+ * scale and |F|. A peak holding more than one family (two unrelated sets of
+ * planes at one d, or several merged by the 2θ window) lists each, with its
+ * own multiplicity, |F| and share of the intensity.
+ */
+function peakText({ set, i }) {
+  const p = set ? result2 : result;
+  if (!p || i >= p.count) return "";
+  const unit = UNITS[p.radiation];
+  const all = peakFamilies(p, i);
+  // Extinct families scatter nothing; a reflection list built from the space
+  // group would not have them, so they are counted on one line at the end
+  // rather than listed, and the multiplicity is that of the ones that diffract.
+  const fams = all.filter((f) => !f.absent);
+  const extinct = all.reduce((s, f) => s + (f.absent ? f.m : 0), 0);
+  const lines = [];
+  if (second && result2) lines.push(set ? second.name : structure.name);
+  if (!fams.length) {
+    lines.push(`${all.map((f) => formatHkl(f.hkl)).join(" + ")}   extinct, |F| = 0`);
+    return lines.join("\n");
+  }
+  // Where the peak is: its families' 2θ, weighted by intensity, so an extinct
+  // reflection merged into it does not pull the reading off the one that
+  // diffracts.
+  const sumI = fams.reduce((s, f) => s + f.I, 0);
+  const at = (key) =>
+    sumI > 0 ? fams.reduce((s, f) => s + f.I * f[key], 0) / sumI : fams[0][key];
+  const tt = at("tt");
+  const d = at("d");
+  const names = fams.map((f) => formatHkl(f.hkl));
+  lines.push(
+    (names.length > 3
+      ? names.slice(0, 3).join(" + ") + " + …"
+      : names.join(" + ")) +
+      `   m ${fams.reduce((s, f) => s + f.m, 0)}`,
+  );
+  lines.push(
+    `${angleText(tt)}   d ${d.toFixed(4)} Å   |Q| ${((2 * Math.PI) / d).toFixed(4)} Å⁻¹`,
+  );
+  lines.push(
+    `I ${p.intensity[i].toFixed(1)} of 100` +
+      (fams.length === 1 ? `   |F| ${fmtF(Math.sqrt(fams[0].F2))} ${unit}` : ""),
+  );
+  if (fams.length > 1) {
+    for (const f of fams.slice(0, 6))
+      lines.push(
+        `  ${padHkl(formatHkl(f.hkl), 9)} m ${String(f.m).padStart(3)}` +
+          `   |F| ${fmtF(Math.sqrt(f.F2))} ${unit}   I ${f.I.toFixed(1)}` +
+          (Math.abs(f.tt - tt) > 5e-4 ? `   ${angleText(f.tt)}` : ""),
+      );
+    if (fams.length > 6) lines.push(`  … and ${fams.length - 6} more`);
+  }
+  if (extinct)
+    lines.push(
+      `  + ${extinct} extinct ${extinct === 1 ? "reflection" : "reflections"}` +
+        " in this peak, |F| = 0",
+    );
+  return lines.join("\n");
+}
+
+/** Under the cursor on the powder plot, away from any peak: 2θ and its d. */
+function cursorText(tt) {
+  const s = Math.sin((tt * Math.PI) / 360);
+  const d = s > 0 ? `${(result.wavelength / (2 * s)).toFixed(4)} Å` : "∞";
+  return `${angleText(tt)}   d ${d}`;
+}
+
+const sameHit = (a, b) =>
+  a === b || (!!a && !!b && a.set === b.set && a.i === b.i);
+
+/** The last peak readout, so moving within one peak does not rebuild it. */
+let tipCache = null;
+
+/**
+ * Hover over the powder plot: pick out the peak under the cursor and float
+ * its readout beside the cursor. The plot is redrawn, and the readout built,
+ * only when the peak changes, not on every pixel the pointer moves: a peak
+ * merged by a wide 2θ window can hold tens of thousands of reflections.
+ */
+function powderHover(e) {
+  const hit = view.pickPowder(e.clientX, e.clientY);
+  const peak = hit && hit.i !== undefined ? hit : null;
+  if (!sameHit(peak, hoverPeak)) {
+    hoverPeak = peak;
+    drawPowder();
+  }
+  let text = "";
+  if (peak) {
+    const res = peak.set ? result2 : result;
+    if (!tipCache || tipCache.res !== res || tipCache.i !== peak.i)
+      tipCache = { res, i: peak.i, text: peakText(peak) };
+    text = tipCache.text;
+  } else if (hit) text = cursorText(hit.tt);
+  const box = $("hover");
+  box.textContent = text;
+  if (text) placeTip(box, e);
+}
+
+/**
+ * Float the readout beside the pointer, inside the plot pane and clear of
+ * the title card, which says what the plot is.
+ */
+function placeTip(box, e) {
+  box.classList.add("tip");
+  const ov = $("overlay").getBoundingClientRect();
+  const pane = $("stage").getBoundingClientRect();
+  const card = $("title").getBoundingClientRect();
+  const w = box.offsetWidth;
+  const h = box.offsetHeight;
+  let x = e.clientX + 16;
+  let y = e.clientY - h - 12;
+  if (x + w > pane.right - 6) x = e.clientX - 16 - w;
+  if (x < pane.left + 6) x = pane.left + 6;
+  const overCard = () =>
+    x < card.right && x + w > card.left && y < card.bottom && y + h > card.top;
+  if (y < pane.top + 6 || overCard()) y = e.clientY + 18;
+  if (y + h > pane.bottom - 6) y = pane.bottom - 6 - h;
+  box.style.left = `${x - ov.left}px`;
+  box.style.top = `${y - ov.top}px`;
+}
+
+/** Back to the readout's own place, under the title card. */
+function dockHover() {
+  const box = $("hover");
+  if (!box.classList.contains("tip")) return;
+  box.classList.remove("tip");
+  box.style.left = "";
+  box.style.top = "";
+}
+
 // ---------------------------------------------------------------- binding
 
 /** Set while a pan is in progress, so hover does not fight the drag. */
 let drag = null;
+
+/** The rotation readout on the pattern and the angle box in the panel. */
+function showRotation() {
+  const a = st.rotation;
+  $("rotReset").textContent = `${Number.isInteger(a) ? a : a.toFixed(1)}°`;
+  if (document.activeElement !== $("rotation")) $("rotation").value = String(a);
+}
+
+/** An angle in degrees, brought into (-180, 180]. */
+function wrapAngle(deg) {
+  let a = ((deg % 360) + 360) % 360;
+  if (a > 180) a -= 360;
+  // so a run of 0.1° steps does not read 29.999999999999996
+  return Math.round(a * 1e6) / 1e6;
+}
+
+/**
+ * The rotate buttons on the pattern, and the angle and step under Display.
+ * A rotation turns the picture, not the model, so it only redraws.
+ */
+function bindRotation() {
+  const turn = (deg) => {
+    st.rotation = wrapAngle(deg);
+    showRotation();
+    draw();
+  };
+  $("rotLeft").addEventListener("click", () => turn(st.rotation + st.rotStep));
+  $("rotRight").addEventListener("click", () => turn(st.rotation - st.rotStep));
+  $("rotReset").addEventListener("click", () => turn(0));
+  // Applied as it is typed; the box itself is tidied only when it is left,
+  // so typing 200 is not rewritten to -160 under the cursor.
+  $("rotation").addEventListener("input", () => {
+    const v = parseFloat($("rotation").value);
+    if (!Number.isFinite(v)) return;
+    st.rotation = wrapAngle(v);
+    $("rotReset").textContent = `${
+      Number.isInteger(st.rotation) ? st.rotation : st.rotation.toFixed(1)
+    }°`;
+    draw();
+  });
+  $("rotation").addEventListener("change", () => {
+    $("rotation").value = String(st.rotation);
+  });
+  $("rotStep").addEventListener("change", () => {
+    st.rotStep = +$("rotStep").value;
+  });
+  showRotation();
+}
 
 function showZoom() {
   $("zoomLabel").textContent = `${Math.round(view.zoom * 100)}%`;
@@ -667,6 +999,9 @@ function bindZoom() {
 function syncRows() {
   const show = (id, on) => $(id).classList.toggle("hidden", !on);
   const powder = st.mode === "powder";
+  // a readout left over from the last view describes nothing on this one
+  $("hover").textContent = "";
+  dockHover();
   show("grpZone", !powder);
   show("rowLayer", st.mode === "section");
   // A powder trace sets its own d min from the 2θ limit and draws lines, not
@@ -677,34 +1012,56 @@ function syncRows() {
   show("chkLog", !powder);
   show("chkRings", st.mode === "saed");
   show("rowColours", !powder);
-  show("rowWavelength", st.mode === "powder" && st.radiation !== "electron");
-  show(
-    "rowKv",
-    st.mode === "saed" || (st.mode === "powder" && st.radiation === "electron"),
-  );
+  // A section is drawn without a wavelength, but its hover quotes 2θ, so it
+  // offers the wavelength (or, for electrons, the voltage) that 2θ is at.
+  show("rowWavelength", st.mode !== "saed" && st.radiation !== "electron");
+  show("rowKv", st.mode === "saed" || st.radiation === "electron");
+  show("rowRotate", !powder);
   show("rowThickness", st.mode === "saed");
   show("rowZones", st.mode === "saed");
   show("rowTtMax", st.mode === "powder");
   show("rowFwhm", st.mode === "powder");
   show("rowMerge", st.mode === "powder");
-  // The comparison belongs to the section view: a powder trace is rotation
-  // invariant, and SAED has its own beam-parallel geometry to keep straight.
-  const compare = st.mode === "section";
-  show("grpCompare", compare);
+  // Two crystals compare in every view. The twist and the coincidence pairing
+  // need positions in a plane, so a powder trace, which is the same at every
+  // orientation, gets the two traces and their peak readouts only.
+  show("grpCompare", true);
   // The twist, tolerance and readout mean nothing until there is a second
   // crystal, so they wait for one; so does its export.
   show("compareBody", !!second);
   show("compareNone", !second);
-  show("saveMatches", compare && !!second);
+  show("compareSpots", !powder);
+  show("saveMatches", !powder && !!second);
+  $("compareHint").textContent = COMPARE_HINT[st.mode];
   $("radiation").disabled = st.mode === "saed";
   if (view) showZoom();
   $("modeNote").textContent =
     st.mode === "saed"
       ? "SAED is electron diffraction by definition, so the radiation is fixed."
       : st.mode === "section"
-        ? "An undistorted plane of the weighted reciprocal lattice, as a precession camera records it."
+        ? "An undistorted plane of the weighted reciprocal lattice, as a " +
+          "precession camera records it. The wavelength (for electrons, the " +
+          "voltage) only sets the 2θ a hover reports."
         : "Reflections sharing a d-spacing are summed, so multiplicity is counted rather than looked up.";
 }
+
+/** What the comparison holds fixed between the two crystals, per view. */
+const COMPARE_HINT = {
+  section:
+    "Both crystals are cut on the same zone axis, layer and d min. The twist " +
+    "rotates the second pattern about the zone axis, which is that crystal's " +
+    "orientation relative to the first, so it is the one rotation that " +
+    "compares two patterns without inventing a picture no crystal can give.",
+  saed:
+    "Both crystals are seen down the same zone axis, at the same voltage, " +
+    "thickness and d min. The twist rotates the second pattern about the " +
+    "beam, which is that crystal's orientation relative to the first.",
+  powder:
+    "Both traces are computed at the same wavelength, 2θ range, peak width " +
+    "and merge rule, each scaled to its own strongest peak. The two rows of " +
+    "ticks under the axis mark each crystal's reflections; hover a peak or a " +
+    "tick to read them.",
+};
 
 function bind() {
   // A box whose min is above zero holds a quantity that must stay positive
@@ -923,32 +1280,25 @@ function bind() {
   );
 
   bindZoom();
+  bindRotation();
 
   $("pattern").addEventListener("mousemove", (e) => {
-    if (!result || st.mode === "powder" || drag) return;
-    const i = view.pick(e.clientX, e.clientY);
-    if (i === null) {
-      $("hover").textContent = "";
+    if (!result || drag) return;
+    if (st.mode === "powder") {
+      powderHover(e);
       return;
     }
-    const hkl = [
-      result.hkl[3 * i],
-      result.hkl[3 * i + 1],
-      result.hkl[3 * i + 2],
-    ];
-    const unit = UNITS[result.radiation || st.radiation];
-    let text =
-      `${formatHkl(hkl)}   (${hkl.join(" ")})\n` +
-      `d ${result.d[i].toFixed(4)} Å   |Q| ${result.q[i].toFixed(4)} Å⁻¹\n` +
-      `|F|² ${result.intensity[i].toExponential(3)} ${unit}²`;
-    if (st.mode === "saed")
-      text += `\ns_g ${result.sg[i].toFixed(5)} Å⁻¹   Laue zone ${result.laueZone[i]}`;
-    $("hover").textContent = text;
+    dockHover();
+    const hit = view.pickSpot(e.clientX, e.clientY);
+    $("hover").textContent = hit ? spotText(hit) : "";
   });
-  $("pattern").addEventListener(
-    "mouseleave",
-    () => ($("hover").textContent = ""),
-  );
+  $("pattern").addEventListener("mouseleave", () => {
+    $("hover").textContent = "";
+    if (hoverPeak) {
+      hoverPeak = null;
+      if (result && st.mode === "powder") drawPowder();
+    }
+  });
 
   new ResizeObserver(() => {
     if (result) draw();
