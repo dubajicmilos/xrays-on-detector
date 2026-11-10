@@ -17,6 +17,9 @@
  * Thickness enters through the relrod: a slab of thickness t turns each
  * reciprocal lattice point into a rod of length ~2/t along the beam, so a
  * reflection with excitation error s_g contributes I = |F|^2 sinc^2(pi t s_g).
+ * In that formula s_g is the microscopist's excitation error, measured in a
+ * reciprocal space where |g| = 1/d. Q and k here carry the 2*pi, so the
+ * distance from a lattice point to the sphere is divided by 2*pi to give it.
  * That is the kinematic result. Dynamical scattering, which really governs
  * electron intensities in a thick crystal, is out of scope and the app says so
  * rather than quietly implying otherwise.
@@ -127,10 +130,14 @@ export function computeTem(
         // the layers it clips are on the far side: solving for Q = (r, 0, z)
         // gives z = (r^2 + z^2) / 2k > 0. Reverse it and every higher-order
         // Laue zone silently disappears.
+        //
+        // k and Q are in 2*pi units and s_g is not (|g| = 1/d), hence the
+        // division: without it the relrod is 2*pi too short and a crystal
+        // behaves as if it were 2*pi times thicker than the number entered.
         const cx = qx - k * nHat[0];
         const cy = qy - k * nHat[1];
         const cz = qz - k * nHat[2];
-        const sg = k - Math.hypot(cx, cy, cz);
+        const sg = (k - Math.hypot(cx, cy, cz)) / TWO_PI;
         if (Math.abs(sg) > sCut) continue;
         seen.add(key);
         hkl.push(h, kk, l);
@@ -158,7 +165,7 @@ export function computeTem(
     x[i] = dot(v, xAxis);
     y[i] = dot(v, yAxis);
     d[i] = TWO_PI / q[i];
-    sg[i] = k - Math.hypot(...v.map((c, j) => c - k * nHat[j]));
+    sg[i] = (k - Math.hypot(...v.map((c, j) => c - k * nHat[j]))) / TWO_PI;
     laueZone[i] =
       idx[3 * i] * zone[0] +
       idx[3 * i + 1] * zone[1] +

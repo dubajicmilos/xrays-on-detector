@@ -20,6 +20,10 @@ reflection with excitation error s_g contributes
 which is the kinematic result. Dynamical scattering, which really governs
 electron intensities in a thick crystal, is out of scope here and is stated as
 such in the app rather than being quietly implied.
+
+In that formula s_g is the microscopist's excitation error, measured in a
+reciprocal space where |g| = 1/d. Q and k in this package carry the 2 pi, so
+the distance from a lattice point to the sphere is divided by 2 pi to give it.
 """
 from __future__ import annotations
 
@@ -58,7 +62,7 @@ class TEMPattern:
     q: np.ndarray
     d: np.ndarray
     intensity: np.ndarray  # |F|^2 times the relrod shape factor
-    s_g: np.ndarray  # excitation error, 1/Angstrom
+    s_g: np.ndarray  # excitation error, 1/Angstrom with |g| = 1/d (no 2 pi)
     laue_zone: np.ndarray  # 0 for ZOLZ, 1 for FOLZ, ...
     uvw: np.ndarray
     g1: np.ndarray
@@ -177,7 +181,12 @@ def compute_tem(
     # this backwards and every higher-order Laue zone silently disappears,
     # leaving a pattern that looks like a plain section.
     centre_to_q = Q - k * n_hat[None, :]
-    s_g = k - np.linalg.norm(centre_to_q, axis=1)
+    #
+    # k and Q are in 2 pi units and s_g is not: the relrod formula takes the
+    # microscopist's excitation error, in a reciprocal space where |g| = 1/d.
+    # Without the division the relrod is 2 pi too short and a crystal behaves
+    # as if it were 2 pi times thicker than the thickness asked for.
+    s_g = (k - np.linalg.norm(centre_to_q, axis=1)) / TWO_PI
 
     keep = np.abs(s_g) <= s_max
     hkl, Q, qn, s_g = hkl[keep], Q[keep], qn[keep], s_g[keep]
