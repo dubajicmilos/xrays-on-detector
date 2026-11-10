@@ -173,6 +173,10 @@
   min-width: 42px;
   text-align: center;
 }
+/* the turn buttons are a group only so the 3D view can hide them together */
+#rotGroup {
+  display: contents;
+}
 #patZoom .sep {
   width: 1px;
   align-self: stretch;

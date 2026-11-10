@@ -19,12 +19,14 @@ import {
   UNITS,
 } from "../../js/scatter.js";
 import { formatHkl } from "./display.js";
+import { computeLattice, ewaldSphere } from "./lattice.js";
 import { describeComparison, pairUp, rotateInPlane, bestTwist } from "./overlay.js";
-import { computePowder, peakFamilies } from "./powder.js";
+import { computePowder, EXTINCT, peakFamilies } from "./powder.js";
 import { PatternView } from "./render.js";
 import { computeSection, zoneLaw } from "./section.js";
 import { Structure } from "./structure.js";
 import { computeTem, dMinForZone } from "./tem.js";
+import { LatticeView } from "./view3d.js";
 
 const WORK = Object.freeze({
   title: "Single-Crystal Diffraction",
@@ -64,6 +66,17 @@ const st = {
   // trace has no orientation to turn.
   rotation: 0,
   rotStep: 15,
+  // The 3D view: the Ewald sphere and the angle the crystal has turned
+  // through, whether omega sweeps on its own and how fast (degrees a second),
+  // the plane of the current layer, and the bare lattice nodes. `back` is the
+  // flat view the 3D button returns to.
+  ewald: true,
+  omega: 0,
+  playing: false,
+  omegaSpeed: 12,
+  plane: false,
+  nodes: false,
+  back: "section",
   // Two-crystal comparison: a second structure, the angle its pattern is
   // rotated by about the zone axis, and whether coincidences are ringed.
   twist: 0,
@@ -87,6 +100,12 @@ let second = null;
 let result2 = null;
 /** The powder peak under the cursor, {set, i}, so the plot can pick it out. */
 let hoverPeak = null;
+/** The 3D view, the reflection under the cursor in it, and a running sweep. */
+let view3d = null;
+let hover3d = null;
+let sweep = null;
+/** Counts loaded structures, so the 3D camera knows when one changes. */
+let structureSerial = 0;
 /** The overlay boxes the last full draw fitted around, for hover redraws. */
 let lastAvoid = [];
 
@@ -123,6 +142,13 @@ function computeFor(s) {
       dMin: st.dMin,
       maxZone: st.zones,
     });
+  if (st.mode === "3d")
+    return computeLattice(s, {
+      dMin: st.dMin,
+      radiation: st.radiation,
+      uvw: st.uvw,
+      layer: st.layer,
+    });
   return computePowder(s, {
     wavelength: wavelengthNow(),
     radiation: st.radiation,
@@ -136,9 +162,10 @@ function recompute() {
   if (!structure) return;
   const status = $("status");
   status.className = "";
+  hover3d = null;
   try {
     result = computeFor(structure);
-    if (st.mode === "section") {
+    if (st.mode === "section" || st.mode === "3d") {
       $("zoneLaw").textContent = zoneLaw(result.uvw, result.layer);
     } else if (st.mode === "saed") {
       $("zoneLaw").textContent = "";
@@ -174,7 +201,8 @@ function recompute() {
 function recomputeSecond() {
   hoverPeak = null;
   secondError = null;
-  if (!second) {
+  // the 3D view shows one crystal; the comparison is drawn in the flat views
+  if (!second || st.mode === "3d") {
     result2 = null;
     return;
   }
@@ -223,6 +251,8 @@ function draw() {
   lastAvoid = avoid;
   if (st.mode === "powder") {
     drawPowder();
+  } else if (st.mode === "3d") {
+    draw3d();
   } else if (second && result2) {
     // Two crystals in one frame. The second is drawn rotated by st.twist about
     // the zone axis, which for a section or a zone-axis pattern is exactly a
@@ -259,6 +289,49 @@ function draw() {
     });
   }
   writeMatchInfo();
+}
+
+/**
+ * How near the Ewald sphere a reflection must be to count as on it, in
+ * 1/Angstrom with the 2*pi. For x-rays and neutrons, 1 % of the sphere's
+ * radius, about +-0.6 degree of turn for a reflection near 2θ = 60 degrees:
+ * wide enough that a sweep shows each one lit for a few frames, narrow enough
+ * that a large cell does not light up hundreds at once. For electrons, the
+ * length of the relrod of a crystal of the given thickness, 2*pi/t, as the
+ * SAED view uses: the sphere is nearly flat there, and the thickness is what
+ * decides how far off it a reflection still appears.
+ */
+function ewaldTolerance() {
+  if (st.radiation === "electron") return (2 * Math.PI) / Math.max(st.thickness, 1);
+  return (0.01 * 2 * Math.PI) / wavelengthNow();
+}
+
+/**
+ * The 3D view alone. The camera looks down the zone axis whenever the zone or
+ * the structure changes, and keeps the user's turn otherwise.
+ */
+function draw3d() {
+  const key = `${structureSerial}|${result.uvw.join(",")}`;
+  if (view3d.key !== key) {
+    view3d.reset(result);
+    view3d.key = key;
+    showZoom();
+  }
+  view3d.draw(result, {
+    gain: st.gain,
+    log: st.log,
+    lut: luts[st.colormap],
+    spotScale: st.spotSize,
+    labels: st.labels && !st.playing,
+    labelThreshold: st.labelThr,
+    ewald: st.ewald,
+    wavelength: wavelengthNow(),
+    omega: st.omega,
+    tol: ewaldTolerance(),
+    plane: st.plane,
+    nodes: st.nodes,
+    hover: hover3d,
+  });
 }
 
 /**
@@ -327,6 +400,20 @@ function writeOverlay() {
   }
 
   const zone = result.uvw.join(" ");
+  if (st.mode === "3d") {
+    const lam = wavelengthNow();
+    setTitle(structure.name, radiation, [
+      `3D reciprocal lattice  ·  ${result.count} reflections  ·  d ≥ ${st.dMin.toFixed(2)} Å`,
+      `zone [${zone}]  ·  layer ${result.layer}  ·  ` +
+        (st.ewald
+          ? `Ewald sphere at λ ${+lam.toFixed(5)} Å`
+          : "no Ewald sphere"),
+    ]);
+    status.textContent =
+      "drag to turn, wheel to zoom, double-click to look down the zone axis" +
+      "   ·   hover a reflection for its indices and 2θ";
+    return;
+  }
   if (st.mode === "section") {
     setTitle(structure.name, radiation, [
       `zone [${zone}]  ·  layer ${result.layer}  ·  (${zoneLaw(result.uvw, result.layer)})`,
@@ -420,6 +507,7 @@ function applyStructure(doc) {
     view.resetView();
     showZoom();
   }
+  structureSerial++;
   try {
     structure = new Structure(doc);
   } catch (err) {
@@ -520,7 +608,99 @@ function stem() {
   // the reduced zone, with separators: [1 -1 0] must not read as 1-10
   const z = `[${(result ? result.uvw : st.uvw).join(",")}]`;
   if (st.mode === "saed") return `${base}_saed_${z}`;
+  if (st.mode === "3d") return `${base}_3d_${st.radiation}`;
   return `${base}_zone${z}_n${st.layer}_${st.radiation}`;
+}
+
+/** Above this many lines the full list would be a file nobody opens. */
+const MAX_LIST = 500000;
+
+/**
+ * Every reflection of the crystal out to d min, symmetry equivalents and
+ * Friedel mates included, with its d, sin θ/λ, |Q|, 2θ at the wavelength in
+ * force, |F| and |F|², strongest first within each d. The d min is the box's,
+ * or for a powder pattern the one its 2θ limit reaches. Extinct reflections
+ * are kept, with |F| = 0, and counted in the header.
+ */
+function saveAllReflections() {
+  if (!structure) return;
+  const radiation = st.mode === "saed" ? "electron" : st.radiation;
+  const lam = wavelengthNow();
+  const dMin =
+    st.mode === "powder"
+      ? lam / (2 * Math.sin((Math.min(st.ttMax, 179.9) * Math.PI) / 360))
+      : st.dMin;
+  const status = $("status");
+  let hkl;
+  let F2;
+  let qv = null;
+  try {
+    hkl = structure.hklWithin(dMin);
+    const n = hkl.length / 3;
+    if (!n)
+      throw new Error(`no reflections with d ≥ ${dMin.toFixed(3)} Å; lower d min`);
+    if (n > MAX_LIST)
+      throw new Error(
+        `${n} reflections with d ≥ ${dMin.toFixed(3)} Å is too long a list; ` +
+          `raise d min above about ${(dMin * Math.cbrt(n / MAX_LIST)).toFixed(3)} Å`,
+      );
+    qv = new Float64Array(n);
+    F2 = structure.intensity(hkl, radiation, qv);
+  } catch (err) {
+    status.className = "bad";
+    status.textContent = `reflection list: ${err.message}`;
+    return;
+  }
+  const n = hkl.length / 3;
+  let top = 0;
+  for (const v of F2) if (v > top) top = v;
+  const zero = EXTINCT * top;
+  let extinct = 0;
+  for (const v of F2) if (v <= zero) extinct++;
+  const order = [...Array(n).keys()].sort(
+    (a, b) => qv[a] - qv[b] || F2[b] - F2[a],
+  );
+  const unit = UNITS[radiation];
+  // as given, without the float noise a bundled cell carries (11.6275000001)
+  const [a, b, c, alpha, beta, gamma] = ["a", "b", "c", "alpha", "beta", "gamma"].map(
+    (key) => +structure.cell[key].toFixed(5),
+  );
+  const L = [
+    `# ${structure.name}${structure.spaceGroup ? `   ${structure.spaceGroup}` : ""}`,
+    `# cell           a ${a} b ${b} c ${c} A, alpha ${alpha} beta ${beta} gamma ${gamma} deg`,
+    `# radiation      ${RADIATION_LABEL[radiation]}`,
+    radiation === "electron"
+      ? `# wavelength     ${lam.toFixed(6)} A (${st.kv} kV), for 2theta`
+      : `# wavelength     ${lam} A, for 2theta`,
+    `# d min          ${dMin.toFixed(4)} A`,
+    `# reflections    ${n}, every hkl with d >= d min, symmetry equivalents ` +
+      `and Friedel mates included; ${extinct} extinct (|F| = 0)`,
+    `# |F| unit       ${unit}; |Q| = 2 pi / d; 2theta empty where d < lambda / 2`,
+    "#",
+    "#    h    k    l         d   sin(th)/l        |Q|     2theta" +
+      "           |F|          |F|^2",
+  ];
+  for (const i of order) {
+    const d = (2 * Math.PI) / qv[i];
+    const s = lam / (2 * d);
+    const tt = s <= 1 ? ((2 * Math.asin(s) * 180) / Math.PI).toFixed(4) : "";
+    const f2 = F2[i] <= zero ? 0 : F2[i];
+    L.push(
+      `${String(hkl[3 * i]).padStart(6)}${String(hkl[3 * i + 1]).padStart(5)}` +
+        `${String(hkl[3 * i + 2]).padStart(5)}` +
+        ` ${d.toFixed(5).padStart(9)}` +
+        ` ${(1 / (2 * d)).toFixed(5).padStart(11)}` +
+        ` ${qv[i].toFixed(5).padStart(10)}` +
+        ` ${tt.padStart(10)}` +
+        ` ${Math.sqrt(f2).toPrecision(6).padStart(13)}` +
+        ` ${f2.toExponential(5).padStart(14)}`,
+    );
+  }
+  download(
+    `${structure.name.replace(/[^\w.-]+/g, "_")}_all_reflections_${radiation}` +
+      `_dmin${dMin.toFixed(2)}.txt`,
+    new Blob([L.join("\n") + "\n"], { type: "text/plain" }),
+  );
 }
 
 function download(name, blob) {
@@ -588,6 +768,8 @@ function saveMatches() {
 
 function saveTable() {
   if (!result) return;
+  // the 3D view's table is the whole lattice it draws
+  if (st.mode === "3d") return saveAllReflections();
   const unit = UNITS[result.radiation || st.radiation];
   const L = [
     `# ${structure.name}`,
@@ -798,6 +980,48 @@ function peakText({ set, i }) {
   return lines.join("\n");
 }
 
+/**
+ * The readout for one reflection of the 3D view: its indices, d, |Q| and 2θ,
+ * its |F|² against the strongest, the layer of the current zone it lies on,
+ * and where it is against the Ewald sphere at this ω.
+ */
+function latticeText(i) {
+  const r = result;
+  const hkl = [r.hkl[3 * i], r.hkl[3 * i + 1], r.hkl[3 * i + 2]];
+  const unit = UNITS[r.radiation];
+  if (r.top === undefined) {
+    r.top = 0;
+    for (const v of r.intensity) if (v > r.top) r.top = v;
+  }
+  const F2 = r.intensity[i];
+  const lines = [
+    `${formatHkl(hkl)}   (${hkl.join(" ")})`,
+    `d ${r.d[i].toFixed(4)} Å   |Q| ${r.q[i].toFixed(4)} Å⁻¹`,
+    twoThetaLine(r.d[i]),
+    F2 <= EXTINCT * r.top
+      ? "|F|² 0, extinct"
+      : `|F|² ${F2.toExponential(3)} ${unit}²   ${pct(F2 / r.top)} of the strongest`,
+    `layer ${r.zoneIndex[i]} of zone [${r.uvw.join(" ")}]`,
+  ];
+  if (st.ewald) {
+    const sph = ewaldSphere(r, wavelengthNow(), st.omega);
+    const off =
+      Math.hypot(
+        r.Q[3 * i] - sph.centre[0],
+        r.Q[3 * i + 1] - sph.centre[1],
+        r.Q[3 * i + 2] - sph.centre[2],
+      ) - sph.k;
+    const at = `at ω ${st.omega.toFixed(1)}°`;
+    lines.push(
+      Math.abs(off) < ewaldTolerance()
+        ? `on the Ewald sphere ${at}`
+        : `${Math.abs(off).toFixed(3)} Å⁻¹ ${off > 0 ? "outside" : "inside"} ` +
+            `the Ewald sphere ${at}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 /** Under the cursor on the powder plot, away from any peak: 2θ and its d. */
 function cursorText(tt) {
   const s = Math.sin((tt * Math.PI) / 360);
@@ -922,15 +1146,19 @@ function bindRotation() {
 }
 
 function showZoom() {
-  $("zoomLabel").textContent = `${Math.round(view.zoom * 100)}%`;
+  const zoom = st.mode === "3d" && view3d ? view3d.zoom : view.zoom;
+  $("zoomLabel").textContent = `${Math.round(zoom * 100)}%`;
   // A powder trace has its own axes; magnifying it would only stretch a plot.
   $("patZoom").classList.toggle("hidden", st.mode === "powder");
+  // The 3D view is turned by dragging, so the flat views' turn buttons go.
+  $("rotGroup").classList.toggle("hidden", st.mode === "3d");
 }
 
 /**
  * Wheel to magnify about the pointer, drag to pan, and the usual three
  * buttons. The transform lives on the view, so a redraw after a zone change
- * keeps whatever magnification you were looking at.
+ * keeps whatever magnification you were looking at. In the 3D view a drag
+ * turns the lattice instead, and the wheel zooms about the middle.
  */
 function bindZoom() {
   const canvas = $("pattern");
@@ -942,9 +1170,8 @@ function bindZoom() {
       e.preventDefault();
       // Normalise the notch: trackpads report pixels, wheels report lines.
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
-      if (
-        view.zoomAt(e.clientX, e.clientY, Math.exp((-e.deltaY * unit) / 420))
-      ) {
+      const f = Math.exp((-e.deltaY * unit) / 420);
+      if (st.mode === "3d" ? view3d.zoomBy(f) : view.zoomAt(e.clientX, e.clientY, f)) {
         draw();
         showZoom();
       }
@@ -960,6 +1187,12 @@ function bindZoom() {
   });
   canvas.addEventListener("pointermove", (e) => {
     if (!drag) return;
+    if (st.mode === "3d") {
+      view3d.turn(e.clientX - drag.x, e.clientY - drag.y);
+      drag = { x: e.clientX, y: e.clientY };
+      draw3d();
+      return;
+    }
     view.panBy(e.clientX - drag.x, e.clientY - drag.y);
     drag = { x: e.clientX, y: e.clientY };
     draw();
@@ -975,35 +1208,38 @@ function bindZoom() {
   canvas.addEventListener("pointercancel", endDrag);
 
   const step = (f) => () => {
-    if (view.zoomCentre(f)) {
+    if (st.mode === "3d" ? view3d.zoomBy(f) : view.zoomCentre(f)) {
       draw();
       showZoom();
     }
   };
+  // Back to the fit, and in the 3D view back to looking down the zone axis.
+  const fit = () => {
+    if (st.mode === "3d") {
+      if (result) view3d.reset(result);
+    } else view.resetView();
+    draw();
+    showZoom();
+  };
   $("zoomIn").addEventListener("click", step(1.35));
   $("zoomOut").addEventListener("click", step(1 / 1.35));
-  $("zoomFit").addEventListener("click", () => {
-    view.resetView();
-    draw();
-    showZoom();
-  });
+  $("zoomFit").addEventListener("click", fit);
   // Double-click is the quick way back, as it is in most viewers.
-  canvas.addEventListener("dblclick", () => {
-    view.resetView();
-    draw();
-    showZoom();
-  });
+  canvas.addEventListener("dblclick", fit);
   showZoom();
 }
 
 function syncRows() {
   const show = (id, on) => $(id).classList.toggle("hidden", !on);
   const powder = st.mode === "powder";
+  const three = st.mode === "3d";
   // a readout left over from the last view describes nothing on this one
   $("hover").textContent = "";
   dockHover();
+  if (!three) setSweep(false);
   show("grpZone", !powder);
-  show("rowLayer", st.mode === "section");
+  // in 3D the layer is the section plane drawn through the lattice
+  show("rowLayer", st.mode === "section" || three);
   // A powder trace sets its own d min from the 2θ limit and draws lines, not
   // spots, so the controls that would do nothing are not offered.
   show("rowDmin", !powder);
@@ -1016,23 +1252,27 @@ function syncRows() {
   // offers the wavelength (or, for electrons, the voltage) that 2θ is at.
   show("rowWavelength", st.mode !== "saed" && st.radiation !== "electron");
   show("rowKv", st.mode === "saed" || st.radiation === "electron");
-  show("rowRotate", !powder);
-  show("rowThickness", st.mode === "saed");
+  show("rowRotate", !powder && !three);
+  // for electrons in 3D the thickness sets how far off the sphere still counts
+  show("rowThickness", st.mode === "saed" || (three && st.radiation === "electron"));
   show("rowZones", st.mode === "saed");
   show("rowTtMax", st.mode === "powder");
   show("rowFwhm", st.mode === "powder");
   show("rowMerge", st.mode === "powder");
-  // Two crystals compare in every view. The twist and the coincidence pairing
-  // need positions in a plane, so a powder trace, which is the same at every
-  // orientation, gets the two traces and their peak readouts only.
-  show("grpCompare", true);
+  show("grp3d", three);
+  $("open3d").textContent = three ? "Back to the flat view" : "Open the 3D view";
+  // Two crystals compare in every flat view. The twist and the coincidence
+  // pairing need positions in a plane, so a powder trace, which is the same at
+  // every orientation, gets the two traces and their peak readouts only. The
+  // 3D view draws one crystal.
+  show("grpCompare", !three);
   // The twist, tolerance and readout mean nothing until there is a second
   // crystal, so they wait for one; so does its export.
   show("compareBody", !!second);
   show("compareNone", !second);
   show("compareSpots", !powder);
-  show("saveMatches", !powder && !!second);
-  $("compareHint").textContent = COMPARE_HINT[st.mode];
+  show("saveMatches", !powder && !three && !!second);
+  if (!three) $("compareHint").textContent = COMPARE_HINT[st.mode];
   $("radiation").disabled = st.mode === "saed";
   if (view) showZoom();
   $("modeNote").textContent =
@@ -1042,7 +1282,44 @@ function syncRows() {
         ? "An undistorted plane of the weighted reciprocal lattice, as a " +
           "precession camera records it. The wavelength (for electrons, the " +
           "voltage) only sets the 2θ a hover reports."
-        : "Reflections sharing a d-spacing are summed, so multiplicity is counted rather than looked up.";
+        : three
+          ? "Every reflection out to d min, at its place in reciprocal space. " +
+            "The wavelength (for electrons, the voltage) sets the Ewald sphere."
+          : "Reflections sharing a d-spacing are summed, so multiplicity is counted rather than looked up.";
+}
+
+/** The ω readout and slider, after ω changes. */
+function showOmega() {
+  $("omegaLabel").textContent = `${st.omega.toFixed(1)}°`;
+  $("omega").value = String(st.omega);
+}
+
+/**
+ * Start or stop the ω sweep: the crystal turning about the vertical axis of
+ * the section view while the Ewald sphere stays with the beam, so the
+ * reflections pass through it one after another, as on a rotation camera.
+ */
+function setSweep(on) {
+  st.playing = !!on && st.mode === "3d";
+  $("playOmega").textContent = st.playing ? "pause" : "play";
+  if (!st.playing || sweep !== null) return;
+  let last = performance.now();
+  const tick = (t) => {
+    if (!st.playing || st.mode !== "3d" || !result) {
+      // stopped, left the 3D view, or a setting failed: the button says so
+      sweep = null;
+      st.playing = false;
+      $("playOmega").textContent = "play";
+      return;
+    }
+    const dt = Math.min(0.1, (t - last) / 1000);
+    last = t;
+    st.omega = wrapAngle(st.omega + st.omegaSpeed * dt);
+    showOmega();
+    draw3d();
+    sweep = requestAnimationFrame(tick);
+  };
+  sweep = requestAnimationFrame(tick);
 }
 
 /** What the comparison holds fixed between the two crystals, per view. */
@@ -1078,6 +1355,8 @@ function bind() {
     });
 
   $("mode").addEventListener("change", () => {
+    // the flat view the 3D button goes back to
+    if (st.mode !== "3d") st.back = st.mode;
     st.mode = $("mode").value;
     // SAED is electron diffraction whatever the menu says, so switch it
     // rather than report a radiation that is not being used.
@@ -1274,6 +1553,33 @@ function bind() {
     view.canvas.toBlob((b) => b && download(stem() + ".png", b));
   });
   $("saveTable").addEventListener("click", saveTable);
+  $("saveAll").addEventListener("click", saveAllReflections);
+
+  // -------------------------------------------------------------- 3D view
+  // One button in and out of it, as well as the Pattern menu.
+  $("open3d").addEventListener("click", () => {
+    $("mode").value = st.mode === "3d" ? st.back : "3d";
+    $("mode").dispatchEvent(new Event("change"));
+  });
+  for (const [id, key] of [
+    ["chkEwald", "ewald"],
+    ["chkPlane", "plane"],
+    ["chkNodes", "nodes"],
+  ])
+    $(id).addEventListener("change", () => {
+      st[key] = $(id).checked;
+      draw();
+    });
+  $("omega").addEventListener("input", () => {
+    st.omega = +$("omega").value;
+    $("omegaLabel").textContent = `${st.omega.toFixed(1)}°`;
+    if (result && st.mode === "3d") draw3d();
+  });
+  $("playOmega").addEventListener("click", () => setSweep(!st.playing));
+  $("omegaSpeed").addEventListener("input", () => {
+    st.omegaSpeed = +$("omegaSpeed").value;
+    $("omegaSpeedLabel").textContent = `${st.omegaSpeed}°/s`;
+  });
   $("saveMatches").addEventListener("click", saveMatches);
   $("panelToggle").addEventListener("click", () =>
     $("panel").classList.toggle("open"),
@@ -1289,6 +1595,16 @@ function bind() {
       return;
     }
     dockHover();
+    if (st.mode === "3d") {
+      const i = view3d.pick(e.clientX, e.clientY);
+      // redrawn only when the reflection under the cursor changes
+      if (i !== hover3d) {
+        hover3d = i;
+        draw3d();
+      }
+      $("hover").textContent = i === null ? "" : latticeText(i);
+      return;
+    }
     const hit = view.pickSpot(e.clientX, e.clientY);
     $("hover").textContent = hit ? spotText(hit) : "";
   });
@@ -1297,6 +1613,10 @@ function bind() {
     if (hoverPeak) {
       hoverPeak = null;
       if (result && st.mode === "powder") drawPowder();
+    }
+    if (hover3d !== null) {
+      hover3d = null;
+      if (result && st.mode === "3d") draw3d();
     }
   });
 
@@ -1356,6 +1676,7 @@ async function boot() {
   cmap.value = st.colormap;
 
   view = new PatternView($("pattern"));
+  view3d = new LatticeView(view);
   bind();
   syncRows();
   collapsibleSections($("panel"));
@@ -1371,6 +1692,9 @@ async function boot() {
     state: st,
     get view() {
       return view;
+    },
+    get view3d() {
+      return view3d;
     },
     get structure() {
       return structure;
@@ -1395,6 +1719,7 @@ async function boot() {
     computeSection,
     computeTem,
     computePowder,
+    computeLattice,
     Structure,
   };
 }

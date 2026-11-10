@@ -30,6 +30,15 @@
 
 import { TWO_PI } from "../../js/physics.js";
 
+/**
+ * Below this fraction of the strongest |F|^2 a reflection is extinct. A
+ * symmetry extinction leaves only rounding noise, some 1e-30 of the strongest
+ * even for a cell of a hundred atoms, while a reflection that is merely very
+ * weak by accident (a near-cancellation in P-1, say) stays above 1e-14. The
+ * floor sits between the two, so only true zeros are called extinct.
+ */
+export const EXTINCT = 1e-18;
+
 export function computePowder(
   structure,
   {
@@ -155,9 +164,7 @@ export function computePowder(
   }
   members.start[peaks.length] = at;
   members.maxF2 = maxF2;
-  // An extinct reflection's |F|^2 is rounding noise, some 1e-25 of the
-  // strongest; anything under this floor is taken as zero.
-  members.f2Floor = 1e-9 * maxF2;
+  members.f2Floor = EXTINCT * maxF2;
 
   // Peaks made only of extinct reflections: the symmetry of the structure
   // forbids them, so they get no tick and no readout, as a reflection list
